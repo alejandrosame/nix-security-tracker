@@ -6,7 +6,12 @@ from typing import Any
 from django.contrib import admin
 from django.db import models
 from django.db.models import CharField, ForeignKey, ManyToManyField, TextField
-from shared.models import Container, NixDerivationMeta, NixpkgsIssue
+from shared.models import (
+    Container,
+    NixDerivationAffectedView,
+    NixDerivationMeta,
+    NixpkgsIssue,
+)
 
 
 class ReadOnlyMixin:
@@ -36,6 +41,21 @@ class ReadOnlyMixin:
                     or (isinstance(field, models.DateTimeField) and field.auto_now_add)
                 )
             ]
+
+    def has_add_permission(
+        self, request: object, obj: models.Model | None = None
+    ) -> bool:
+        return False
+
+    def has_change_permission(
+        self, request: object, obj: models.Model | None = None
+    ) -> bool:
+        return False
+
+    def has_delete_permission(
+        self, request: object, obj: models.Model | None = None
+    ) -> bool:
+        return False
 
 
 class AutocompleteMixin:
@@ -129,3 +149,27 @@ class ContainerAdmin(ReadOnlyMixin, AutocompleteMixin, admin.ModelAdmin):
 @admin.register(NixpkgsIssue)
 class NixpkgsIssueAdmin(AutocompleteMixin, admin.ModelAdmin):
     readonly_fields = ["code"]
+
+
+@admin.register(NixDerivationAffectedView)
+class NixDerivationAffectedViewAdmin(ReadOnlyMixin, admin.ModelAdmin):
+    change_list_template = "admin/tabbed_change_list.html"
+    list_display = [
+        "id",
+        "attribute",
+        "issue",
+        "issue_status",
+        "cve",
+        "cve_state",
+        "channel_id",
+    ]
+    list_per_page = 4
+
+    def changelist_view(self, request: Any, extra_context: Any = None) -> Any:
+        extra_context = extra_context or {}
+        extra_context["channels"] = ["NIXOS-UNSTABLE", "NIXOS-23.11", "NIXOS-23.05"]
+
+        return super().changelist_view(
+            request,
+            extra_context=extra_context,
+        )

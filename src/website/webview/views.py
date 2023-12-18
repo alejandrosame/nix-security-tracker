@@ -1,8 +1,9 @@
 import re
 from typing import Any
 
+from django.db.models import F
 from django.db.models.manager import BaseManager
-from django.shortcuts import get_object_or_404
+from django.shortcuts import get_object_or_404, render
 from django.views.generic import DetailView, ListView, TemplateView
 from shared.models import Container, CveRecord, NixpkgsIssue
 
@@ -46,3 +47,21 @@ class NixpkgsIssueListView(ListView):
 
     def get_queryset(self) -> BaseManager[NixpkgsIssue]:
         return NixpkgsIssue.objects.all()
+
+
+def affected_derivation_per_channel_view(request: Any) -> Any:
+    entries = NixpkgsIssue.objects.values(
+        issue_id=F("id"), issue_code=F("code"), issue_status=F("status")
+    ).annotate(
+        cve_id=F("cve__id"),
+        cve_code=F("cve__cve_id"),
+        cve_state=F("cve__state"),
+        drv_id=F("derivations__id"),
+        drv_attribute=F("derivations__attribute"),
+        drv_path=F("derivations__derivation_path"),
+        channel_id=F("derivations__parent_evaluation__channel_id"),
+    )
+
+    return render(
+        request, "affected_derivation_per_channel_view.html", {"entries": entries}
+    )

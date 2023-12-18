@@ -1,6 +1,11 @@
 from django.urls import path, re_path
 
-from webview.views import HomeView, NixpkgsIssueListView, NixpkgsIssueView
+from webview.views import (
+    HomeView,
+    NixpkgsIssueListView,
+    NixpkgsIssueView,
+    affected_derivation_per_channel_view,
+)
 
 app_name = "webview"
 
@@ -12,5 +17,10 @@ urlpatterns = [
         r"^issues/(?P<code>NIXPKGS-[0-9]{4}-[0-9]{4,19})$",
         NixpkgsIssueView.as_view(),
         name="issue_detail",
+    ),
+    path(
+        "affected_drv",
+        affected_derivation_per_channel_view,
+        name="affected_derivation_per_channel_view",
     ),
 ]

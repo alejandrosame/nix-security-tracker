@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+
+{% block title %}
+Affected derivations per channel
+{% endblock title %}
+
+{% block content %}
+
+{% for entry in entries %}
+  {{ entry.channel_id }} {{ entry.drv_id }} {{ entry.drv_attribute }} {{ entry.drv_path }}
+  {{ entry.issue_id }} {{ entry.issue_code }} {{ entry.issue_status }}
+  {{ entry.cve_id }} {{ entry.cve_code }} {{ entry.cve_state }}
+  </br>
+{% endfor %}
+
+{% endblock content %}

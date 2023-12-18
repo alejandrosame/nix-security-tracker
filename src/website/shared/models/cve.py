@@ -23,12 +23,13 @@ class Organization(models.Model):
         return self.short_name
 
 
+class RecordState(models.TextChoices):
+    PUBLISHED = "PUBLISHED", _("PUBLISHED")
+    REJECTED = "REJECTED", _("REJECTED")
+
+
 class CveRecord(models.Model):
     """Class representing a CVE record."""
-
-    class RecordState(models.TextChoices):
-        PUBLISHED = "PUBLISHED", _("PUBLISHED")
-        REJECTED = "REJECTED", _("REJECTED")
 
     state = models.CharField(
         max_length=text_length(RecordState),
@@ -368,3 +369,41 @@ class NixpkgsAdvisory(models.Model):
         CRITICAL = "CRITICAL", _("critical")
 
     issues = models.ManyToManyField(NixpkgsIssue)
+
+
+class NixDerivationAffectedView(models.Model):
+    class Meta:
+        db_table = "shared_affected_derivation"
+        managed = False
+
+    id = models.ForeignKey(
+        NixDerivation,
+        primary_key=True,
+        db_column="drv_id",
+        to_field="id",
+        on_delete=models.DO_NOTHING,
+    )
+    attribute = models.CharField(max_length=255)
+    path = models.CharField(max_length=255)
+
+    issue = models.ForeignKey(
+        NixpkgsIssue, db_column="issue_id", to_field="id", on_delete=models.DO_NOTHING
+    )
+    issue_code = models.CharField(max_length=255)
+    issue_status = models.CharField(
+        max_length=text_length(IssueStatus),
+        choices=IssueStatus.choices,
+        default=IssueStatus.UNKNOWN,
+    )  # Make a reusable type?
+
+    cve = models.ForeignKey(
+        CveRecord, db_column="cve_id", to_field="id", on_delete=models.DO_NOTHING
+    )
+    cve_code = models.CharField(max_length=255)
+    cve_state = models.CharField(
+        max_length=text_length(RecordState),
+        choices=RecordState.choices,
+        default=RecordState.PUBLISHED,
+    )  # Make a reusable type?
+
+    channel_id = models.CharField(max_length=255)
