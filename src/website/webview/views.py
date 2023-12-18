@@ -3,9 +3,9 @@ from typing import Any
 
 from django.db.models import F
 from django.db.models.manager import BaseManager
-from django.shortcuts import get_object_or_404, render
+from django.shortcuts import get_object_or_404
 from django.views.generic import DetailView, ListView, TemplateView
-from shared.models import Container, CveRecord, NixpkgsIssue
+from shared.models import Container, CveRecord, NixChannel, NixpkgsIssue
 
 
 class HomeView(TemplateView):
@@ -49,19 +49,37 @@ class NixpkgsIssueListView(ListView):
         return NixpkgsIssue.objects.all()
 
 
-def affected_derivation_per_channel_view(request: Any) -> Any:
-    entries = NixpkgsIssue.objects.values(
-        issue_id=F("id"), issue_code=F("code"), issue_status=F("status")
-    ).annotate(
-        cve_id=F("cve__id"),
-        cve_code=F("cve__cve_id"),
-        cve_state=F("cve__state"),
-        drv_id=F("derivations__id"),
-        drv_attribute=F("derivations__attribute"),
-        drv_path=F("derivations__derivation_path"),
-        channel_id=F("derivations__parent_evaluation__channel_id"),
-    )
+class NixderivationPerChannelView(ListView):
+    template_name = "affected_derivation_per_channel_view.html"
+    context_object_name = "derivations_list"
+    paginate_by = 4
 
-    return render(
-        request, "affected_derivation_per_channel_view.html", {"entries": entries}
-    )
+    def get_queryset(self) -> Any:
+        channel_filter_value = self.kwargs["channel"]
+        channel = get_object_or_404(NixChannel, channel_branch=channel_filter_value)
+
+        return (
+            NixpkgsIssue.objects.values(
+                issue_id=F("id"), issue_code=F("code"), issue_status=F("status")
+            )
+            .annotate(
+                cve_id=F("cve__id"),
+                cve_code=F("cve__cve_id"),
+                cve_state=F("cve__state"),
+                drv_id=F("derivations__id"),
+                drv_attribute=F("derivations__attribute"),
+                drv_path=F("derivations__derivation_path"),
+                channel_id=F("derivations__parent_evaluation__channel_id"),
+            )
+            .filter(channel_id=channel.channel_branch)
+        )
+
+    def get_context_data(self, **kwargs: Any) -> Any:
+        context = super().get_context_data(**kwargs)
+        context["channels"] = ["NIXOS-UNSTABLE", "NIXOS-23.11", "NIXOS-23.05"]
+        context["current_channel"] = self.kwargs["channel"].upper()
+        context["adjusted_elided_page_range"] = context[
+            "paginator"
+        ].get_elided_page_range(context["page_obj"].number)
+
+        return context

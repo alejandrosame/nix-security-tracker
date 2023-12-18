@@ -1,10 +1,11 @@
 from django.urls import path, re_path
+from django.views.generic.base import RedirectView
 
 from webview.views import (
     HomeView,
+    NixderivationPerChannelView,
     NixpkgsIssueListView,
     NixpkgsIssueView,
-    affected_derivation_per_channel_view,
 )
 
 app_name = "webview"
@@ -18,9 +19,14 @@ urlpatterns = [
         NixpkgsIssueView.as_view(),
         name="issue_detail",
     ),
+    re_path(
+        "^derivations/(?P<channel>nixos-.*)$",
+        NixderivationPerChannelView.as_view(),
+        name="drv_per_channel",
+    ),
     path(
-        "affected_drv",
-        affected_derivation_per_channel_view,
-        name="affected_derivation_per_channel_view",
+        "derivations/",
+        RedirectView.as_view(url="nixos-unstable", permanent=True),
+        name="drv",
     ),
 ]

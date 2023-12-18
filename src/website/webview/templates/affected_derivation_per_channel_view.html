@@ -1,16 +1,58 @@
 {% extends "base.html" %}
 
+{% block extra_head %}
+  <style>
+    ul#tab-channels { display: flex; padding-left: 1em;  }
+    ul#tab-channels li { position: relative; display: inline-block; float: left; }
+    ul#tab-channels li + li:before { content: " | "; padding: 0 15px; }
+    ul#tab-channels .current { font-weight: bold; }
+
+    nav#pagination { background-color: white; justify-content: center; display: flex; gap: 10px; }
+    nav#pagination a { color: black; }
+    nav#pagination .current { font-weight: bold; }
+    nav#pagination ul { margin-left: unset; margin-right: 1em; }
+    nav#pagination li.index + li.index { margin-left: 0.1em; }
+    nav#pagination .count { color: dimgray; margin-left: unset; margin-right: auto; }
+  </style>
+{% endblock %}
+
 {% block title %}
-Affected derivations per channel
+  Affected derivations per channel
 {% endblock title %}
 
 {% block content %}
+  <ul id="tab-channels" >
+    {% for channel in channels %}
+      <li class="{% if channel == current_channel %}current {% endif %}">
+        <a href="/derivations/{{channel|lower}}">{{channel}}</a>
+      </li>
+    {% endfor %}
+  </ul>
 
-{% for entry in entries %}
-  {{ entry.channel_id }} {{ entry.drv_id }} {{ entry.drv_attribute }} {{ entry.drv_path }}
-  {{ entry.issue_id }} {{ entry.issue_code }} {{ entry.issue_status }}
-  {{ entry.cve_id }} {{ entry.cve_code }} {{ entry.cve_state }}
-  </br>
-{% endfor %}
-
+  <div>
+    {% for drv in derivations_list %}
+      {{ drv.channel_id }} {{ drv.drv_id }} {{ drv.drv_attribute }} {{ drv.drv_path }}
+      {{ drv.issue_id }} {{ drv.issue_code }} {{ drv.issue_status }}
+      {{ drv.cve_id }} {{ drv.cve_code }} {{ drv.cve_state }}
+      </br>
+    {% endfor %}
+  </div>
 {% endblock content %}
+
+{% block pagination %}
+  <ul>
+    {% for page_number in adjusted_elided_page_range %}
+      <li class="index">
+        {% if page_number == paginator.ELLIPSIS %}
+        {{page_number}}
+        {% else %}
+        <a href="{{request.path}}?page={{page_number}}" class="{% if page_number == page_obj.number %}current{% endif %}">
+          {{page_number}}
+        </a>
+        {% endif %}
+      </li>
+    {% endfor %}
+
+  </ul>
+  <span class="count">{{paginator.count}} affected derivations</span>
+{% endblock %}
