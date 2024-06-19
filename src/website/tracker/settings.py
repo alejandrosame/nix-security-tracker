@@ -225,6 +225,9 @@ AUTHENTICATION_BACKENDS = [
     "allauth.account.auth_backends.AuthenticationBackend",
 ]
 
+# User auth integrated with Github oauth
+AUTH_USER_MODEL = "shared.User"
+
 SOCIALACCOUNT_PROVIDERS = {
     "github": {
         "SCOPE": [

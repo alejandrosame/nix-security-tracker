@@ -8,7 +8,7 @@ from github import Github
 from github.NamedUser import NamedUser
 from github.Organization import Organization
 from github.Team import Team
-from shared.models import SocialUser
+from shared.models import User as SocialUser
 from shared.utils import get_gh
 
 register = template.Library()
