@@ -1,9 +1,13 @@
 import logging
+from functools import lru_cache
 from typing import Any, cast
 
 from allauth.socialaccount.models import SocialAccount
+from django.conf import settings
 from django.contrib.auth.models import Group, Permission, User
+from django.db import transaction
 from django.db.models import Q, QuerySet
+from django.dispatch import Signal, receiver
 from github import Github
 from github.NamedUser import NamedUser
 from github.Organization import Organization
@@ -60,37 +64,6 @@ def get_gh_team(org_or_orgname: Organization | str, teamname: str) -> Team | Non
     return None
 
 
-def get_github_ids_cache() -> dict[str, set[int]]:
-    """
-    Return a dictionary cache with the Github IDs for each team.
-    """
-
-    def get_team_member_ids(orgname: str, teamname: str) -> set[int]:
-        team = get_gh_team(orgname, teamname)
-        if team:
-            members = team.get_members()
-            logger.info(
-                "Caching %s IDs from team %s/%s...",
-                members.totalCount,
-                orgname,
-                teamname,
-            )
-
-            # The iterator will make the extra page API calls for us.
-            return {member.id for member in members}
-        return set()
-
-    ids: dict[str, set[int]] = dict()
-
-    ids["security_team"] = get_team_member_ids("NixOS", "security")
-    ids["committers"] = get_team_member_ids("NixOS", "nixpkgs-committers")
-    ids["maintainers"] = get_team_member_ids("NixOS", "nixpkgs-maintainers")
-
-    logger.info("Done caching IDs from Github.")
-
-    return ids
-
-
 def is_org_member(username: str, orgname: str) -> bool:
     """
     Return whether a given username is a member of a Github organization
@@ -113,6 +86,84 @@ def is_team_member(username: str, orgname: str, teamname: str) -> bool:
     if gh_team:
         return gh_team.has_in_members(gh_named_user)
     return False
+
+
+# We only care about members of 3 teams: security, maintainers and committers
+@lru_cache(maxsize=3)
+def get_team_member_ids(orgname: str, teamname: str) -> set[int]:
+    team = get_gh_team(orgname, teamname)
+    if team:
+        members = team.get_members()
+        logger.info(
+            "Caching %s IDs from team %s/%s...",
+            members.totalCount,
+            orgname,
+            teamname,
+        )
+
+        # The iterator will make the extra page API calls for us.
+        return {member.id for member in members}
+    return set()
+
+
+def invalidate_gh_teams_ids_cache() -> None:
+    get_team_member_ids.cache_clear()
+
+
+update_groups_signal = Signal()
+
+
+@receiver(update_groups_signal)
+def update_groups_from_gh_teams(**kwargs: Any) -> None:
+    """
+    Update the Auth.Group objects based on the Github team membership.
+
+    This function reacts to a custom signal in order to profit from the cached
+    function `get_team_member_ids`.
+    """
+
+    logger.info("Resetting group permissions based on their Github team memberships.")
+
+    ids: dict[str, set[int]] = dict()
+
+    ids["security_team"] = get_team_member_ids("NixOS", "security")
+    ids["committers"] = get_team_member_ids("NixOS", "nixpkgs-committers")
+    ids["maintainers"] = get_team_member_ids("NixOS", "nixpkgs-maintainers")
+
+    # Get the group objects for the transaction
+    group_objects: dict[str, Group] = {}
+    for groupname in ids.keys():
+        group_objects[groupname] = Group.objects.get(name=groupname)
+
+    logger.info("Using Github ID cache to update database groups...")
+
+    # Open a single transaction for the db
+    with transaction.atomic():
+        users = User.objects.prefetch_related("socialaccount_set").iterator()
+        for user in users:
+            social = user.socialaccount_set.filter(provider="github").first()  # type: ignore
+            if social:
+                for groupname, id_set in ids.items():
+                    if social.extra_data["id"] in id_set:
+                        user.groups.add(group_objects[groupname])
+                    else:
+                        user.groups.remove(group_objects[groupname])
+
+                logger.info("Done updating database groups.")
+            else:
+                # Superusers and the anonymous user are the only possible users
+                # with no social account. Log an error if we find any other user that didn't
+                # setup up their account via Github login.
+                # NOTE: the anonymous user is created by django-guardian.
+                if (
+                    not user.is_superuser
+                    and user.username != settings.ANONYMOUS_USER_NAME
+                ):
+                    logger.error(
+                        "User %s with ID %s has no social account auth.",
+                        user,
+                        user.id,  # type: ignore
+                    )
 
 
 def init_user_groups(instance: SocialAccount, created: bool, **kwargs: Any) -> None:
