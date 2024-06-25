@@ -1,10 +1,10 @@
 import logging
-from functools import lru_cache
 from typing import Any, cast
 
 from allauth.socialaccount.models import SocialAccount
 from django.conf import settings
 from django.contrib.auth.models import Group, Permission, User
+from django.core.cache import cache
 from django.db import transaction
 from django.db.models import Q, QuerySet
 from django.dispatch import Signal, receiver
@@ -89,7 +89,7 @@ def is_team_member(username: str, orgname: str, teamname: str) -> bool:
 
 
 # We only care about members of 3 teams: security, maintainers and committers
-@lru_cache(maxsize=3)
+# @lru_cache(maxsize=3)
 def get_team_member_ids(orgname: str, teamname: str) -> set[int]:
     team = get_gh_team(orgname, teamname)
     if team:
@@ -122,13 +122,18 @@ def update_groups_from_gh_teams(**kwargs: Any) -> None:
     function `get_team_member_ids`.
     """
 
+    # Cheack cache and refetch is needed
+    if cache.get("team_ids") is None:
+        ids: dict[str, set[int]] = dict()
+        ids["security_team"] = get_team_member_ids("NixOS", "security")
+        ids["committers"] = get_team_member_ids("NixOS", "nixpkgs-committers")
+        ids["maintainers"] = get_team_member_ids("NixOS", "nixpkgs-maintainers")
+        cache.set("team_ids", ids)
+
     logger.info("Resetting group permissions based on their Github team memberships.")
 
     ids: dict[str, set[int]] = dict()
-
-    ids["security_team"] = get_team_member_ids("NixOS", "security")
-    ids["committers"] = get_team_member_ids("NixOS", "nixpkgs-committers")
-    ids["maintainers"] = get_team_member_ids("NixOS", "nixpkgs-maintainers")
+    ids = cache.get("team_ids")
 
     # Get the group objects for the transaction
     group_objects: dict[str, Group] = {}
