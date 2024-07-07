@@ -4,17 +4,69 @@ from collections.abc import Callable
 from typing import Any
 
 from django import forms
+from django.apps import apps
 from django.contrib import admin
 from django.db import models
 from django.db.models import CharField, ForeignKey, ManyToManyField, TextField
+from shared.auth import isadmin, ismaintainer
 from shared.models import (
     Container,
+    NixDerivation,
     NixDerivationMeta,
     NixpkgsIssue,
 )
-from tracker.admin import CustomAdminPermissionsMixin, custom_admin_site
+from tracker.admin import custom_admin_site
 
 admin_site = custom_admin_site
+
+
+# Mixins
+class CustomAdminPermissionsMixin:
+    def has_view_permission(
+        self, request: Any, obj: models.Model | None = None
+    ) -> bool:
+        return isadmin(request)
+
+    def has_change_permission(
+        self, request: Any, obj: models.Model | None = None
+    ) -> bool:
+        return isadmin(request)
+
+    def has_add_permission(self, request: Any) -> bool:
+        return isadmin(request)
+
+    def has_delete_permission(
+        self, request: Any, obj: models.Model | None = None
+    ) -> bool:
+        return isadmin(request)
+
+    def has_module_permission(self, request: Any) -> bool:
+        return isadmin(request)
+
+
+class MaintainerPermissionsMixin(CustomAdminPermissionsMixin):
+    def has_view_permission(
+        self, request: Any, obj: models.Model | None = None
+    ) -> bool:
+        return isadmin(request) or ismaintainer(request)
+
+    def has_change_permission(
+        self, request: Any, obj: models.Model | None = None
+    ) -> bool:
+        print("here change")
+        return isadmin(request) or ismaintainer(request)
+
+    def has_add_permission(self, request: Any) -> bool:
+        print("here add")
+        return isadmin(request) or ismaintainer(request)
+
+    def has_delete_permission(
+        self, request: Any, obj: models.Model | None = None
+    ) -> bool:
+        return isadmin(request) or ismaintainer(request)
+
+    def has_module_permission(self, request: Any) -> bool:
+        return isadmin(request) or ismaintainer(request)
 
 
 class ReadOnlyMixin:
@@ -69,23 +121,10 @@ class AutocompleteMixin:
                 # Add search_fields to the referenced models
                 related_model = field.remote_field.model
                 related_admin = admin_site._registry.get(related_model)
-                if not related_admin:
-                    related_admin = self.create_related_admin(related_model)
-                self.set_search_fields(related_model, related_admin)
-
-    def create_related_admin(self, related_model: type[models.Model]) -> type[Any]:
-        related_admin = type(
-            f"{related_model.__name__}Admin",
-            (
-                ReadOnlyMixin,
-                AutocompleteMixin,
-                CustomAdminPermissionsMixin,
-                admin.ModelAdmin,
-            ),
-            {},
-        )
-        admin_site.register(related_model, related_admin)
-        return related_admin
+                # if not related_admin:
+                # related_admin = self.create_related_admin(related_model)
+                if related_admin:
+                    self.set_search_fields(related_model, related_admin)
 
     def set_search_fields(
         self,
@@ -105,6 +144,24 @@ class AutocompleteMixin:
             admin_class.search_fields = search_fields
 
 
+# Register all models from the 'shared' app
+shared_app_config = apps.get_app_config("shared")
+shared_models = shared_app_config.get_models()
+for model in shared_models:
+    modeladmin = type(
+        f"{model.__name__}Admin",
+        (
+            # ReadOnlyMixin,
+            # AutocompleteMixin,
+            CustomAdminPermissionsMixin,
+            admin.ModelAdmin,
+        ),
+        {},
+    )
+
+    admin_site.register(model, modeladmin)
+
+
 def override(model_class: type[Any]) -> Callable[[type[Any]], type[Any]]:
     def decorator(admin_class: type[Any]) -> type[Any]:
         if admin_site.is_registered(model_class):
@@ -117,16 +174,36 @@ def override(model_class: type[Any]) -> Callable[[type[Any]], type[Any]]:
 
 @override(NixDerivationMeta)
 class NixDerivationMetaAdmin(
-    ReadOnlyMixin, AutocompleteMixin, CustomAdminPermissionsMixin, admin.ModelAdmin
+    # AutocompleteMixin,
+    MaintainerPermissionsMixin,
+    admin.ModelAdmin,
 ):
-    search_fields = ["known_vulnerabilities"]
+    # search_fields = ["known_vulnerabilities"]
+    pass
+
+    '''
+    def get_queryset(self, request):
+        """ Limit elements shown for pkg maintainer """
+        queryset = NixDerivationMeta.objects.all()
+
+        if not isadmin(request) and ismaintainer(request):
+            queryset = (
+                NixDerivationMeta.objects.prefetch_related('maintainers')
+                    .filter(maintainers__github=request.user.username)
+            )
+
+        return queryset
+    '''
 
 
-@admin.register(Container, site=admin_site)
+# @admin.register(Container, site=admin_site)
+@override(Container)
 class ContainerAdmin(
-    ReadOnlyMixin, AutocompleteMixin, CustomAdminPermissionsMixin, admin.ModelAdmin
+    # AutocompleteMixin,
+    CustomAdminPermissionsMixin,
+    admin.ModelAdmin,
 ):
-    search_fields = ["title"]
+    # search_fields = ["title"]
 
     def get_search_results(
         self, request: Any, queryset: Any, search_term: str
@@ -176,12 +253,9 @@ def nixpkgsissueform_factory(request: Any) -> type[forms.ModelForm]:
     return NixpkgsIssueForm
 
 
-@admin.register(NixpkgsIssue, site=admin_site)
-class NixpkgsIssueAdmin(
-    AutocompleteMixin, CustomAdminPermissionsMixin, admin.ModelAdmin
-):
-    readonly_fields = ["code"]
-
+# @admin.register(NixpkgsIssue, site=admin_site)
+@override(Container)
+class NixpkgsIssueAdmin(MaintainerPermissionsMixin, admin.ModelAdmin):
     # TODO: check permission functions
     def has_view_permission(
         self, request: Any, obj: models.Model | None = None
@@ -224,3 +298,48 @@ class NixpkgsIssueAdmin(
             return super().get_form(request, obj, **kwargs)
         else:
             return nixpkgsissueform_factory(request)
+
+    '''
+    def get_queryset(self, request):
+        """ Limit elements shown for pkg maintainer """
+        queryset = NixpkgsIssue.objects.all()
+
+        if not isadmin(request) and ismaintainer(request):
+            queryset = (
+                NixpkgsIssue.objects.prefetch_related('derivations__metadata__maintainers')
+                    .filter(derivations__metadata__maintainers__github=request.user.username)
+            )
+
+        return queryset
+    '''
+
+
+@override(NixDerivation)
+class NixDerivationAdmin(
+    # AutocompleteMixin,
+    MaintainerPermissionsMixin,
+    admin.ModelAdmin,
+):
+    # search_fields = ["name"]
+    pass
+    '''
+    def get_queryset(self, request):
+        """ Limit elements shown for pkg maintainer """
+        queryset = NixDerivation.objects.all()
+
+        if not isadmin(request) and ismaintainer(request):
+            print("yo")
+            queryset = (
+                NixDerivation.objects.prefetch_related('metadata__maintainers')
+                    .filter(metadata__maintainers__github=request.user.username)
+            )
+
+        return queryset
+    '''
+
+
+# @override(NixDerivation)
+# class ContainerAdmin(
+#    AutocompleteMixin, MaintainerPermissionsMixin, admin.ModelAdmin
+# ):
+#    search_fields = ["name"]
