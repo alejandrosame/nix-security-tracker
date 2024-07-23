@@ -41,6 +41,8 @@ class GroupedNixDerivation(TypedDict):
 def triage_view(request: HttpRequest) -> HttpResponse:
     template_name = "triage_view.html"
     paginate_by = 10
+    pages_on_each_side = 2
+    pages_on_ends = 1
 
     cve_qs = (
         Container.objects.prefetch_related("descriptions", "affected", "cve")
@@ -77,7 +79,7 @@ def triage_view(request: HttpRequest) -> HttpResponse:
 
     # Paginators
     cve_paginator = Paginator(cve_objects, paginate_by)
-    cve_page_number = 1  # request.GET.get('page_cves', 1)
+    cve_page_number = request.GET.get("cve_page", 1)
     cve_page_objects = cve_paginator.get_page(cve_page_number)
 
     # NOTE(alejandrosame): Alternatively, don't group here but use group in template.
@@ -94,12 +96,18 @@ def triage_view(request: HttpRequest) -> HttpResponse:
     )
 
     pkg_paginator = Paginator(grouped_pkg_objects, paginate_by)
-    pkg_page_number = 1  # request.GET.get('page_pkgs', 1)
+    pkg_page_number = request.GET.get("pkg_page", 1)
     pkg_page_objects = pkg_paginator.get_page(pkg_page_number)
 
     context = {
         "cve_list": cve_page_objects,
         "pkg_list": pkg_page_objects,
+        "cve_paginator_range": cve_paginator.get_elided_page_range(  # type: ignore
+            cve_page_number, on_each_side=pages_on_each_side, on_ends=pages_on_ends
+        ),
+        "pkg_paginator_range": pkg_paginator.get_elided_page_range(  # type: ignore
+            pkg_page_number, on_each_side=pages_on_each_side, on_ends=pages_on_ends
+        ),
         "search_cves": search_cves,
         "search_pkgs": search_pkgs,
     }

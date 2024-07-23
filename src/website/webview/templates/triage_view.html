@@ -19,22 +19,51 @@
     }
 
     .column-header {
+        margin-bottom: 0px;
+        padding-bottom: 0px;
+    }
+
+    .column-header-top {
         display: flex;
         justify-content: left;
         align-items: center;
         padding: 0px 10px 0px 10px;
-        margin: 0px 5px 10px 5px;
+        margin: 0px 5px 0px 5px;
     }
 
-    .column-header > * {
+    .column-header-top > * {
         padding-right: 20px
     }
 
-    .column-header > h1 {
+    .column-header-top > h1 {
         margin-top: 0;
         margin-bottom: 0;
         padding-top: 0;
         padding-bottom: 0;
+    }
+
+    nav.pagination {
+        background-color: white;
+        justify-content: center;
+        display: flex;
+        gap: 10px;
+    }
+
+    nav.pagination ul{
+        margin-left: auto;
+        margin-right: auto;
+    }
+
+    nav.pagination a {
+        color: black;
+    }
+
+    nav.pagination .current {
+        font-weight: bold;
+    }
+
+    nav.pagination li.index + li.index {
+        margin-left: 0.1em;
     }
 
     .selectable-item {
@@ -106,13 +135,31 @@
     <div class="container">
         <div class="column">
             <div class="column-header">
-                <h1>CVEs</h1>
-                <div>
-                    <input name="search_cves" type="text" placeholder="Search to filter..."
-                        {% if search_cves %} value="{{search_cves}}" {% endif %}
-                    />
+                <div class="column-header-top">
+                    <h1>CVEs</h1>
+                    <div>
+                        <input name="search_cves" type="text" placeholder="Search to filter..."
+                            {% if search_cves %} value="{{search_cves}}" {% endif %}
+                        />
+                    </div>
                 </div>
-                <!--<span>[Pagination goes here]</span>-->
+                <nav class="pagination">
+                    <ul>
+                        {% for page_number in cve_paginator_range %}
+                        <li class="index">
+                            {% if page_number == paginator.ELLIPSIS %}
+                                {{paginator.ELLIPSIS}}
+                            {% else %}
+                                <a  href="{{request.path}}?cve_page={{page_number}}"
+                                    class="{% if page_number == cve_list.number %}current{% endif %}"
+                                >
+                                    {{page_number}}
+                                </a>
+                            {% endif %}
+                        </li>
+                        {% endfor %}
+                    </ul>
+                </nav>
             </div>
             <ul class="cves">
                 {% for object in cve_list %}
@@ -136,13 +183,31 @@
 
         <div class="column">
             <div class="column-header">
-                <h1>PKGs</h1>
-                <div>
-                    <input name="search_pkgs" type="text" placeholder="Search to filter..."
-                    {% if search_pkgs %} value="{{search_pkgs}}" {% endif %}
-                    />
+                <div class="column-header-top">
+                    <h1>PKGs</h1>
+                    <div>
+                        <input name="search_pkgs" type="text" placeholder="Search to filter..."
+                        {% if search_pkgs %} value="{{search_pkgs}}" {% endif %}
+                        />
+                    </div>
                 </div>
-                <!--<span>[Pagination goes here]</span>-->
+                <nav class="pagination">
+                    <ul>
+                        {% for page_number in pkg_paginator_range %}
+                        <li class="index">
+                            {% if page_number == paginator.ELLIPSIS %}
+                                {{paginator.ELLIPSIS}}
+                            {% else %}
+                                <a  href="{{request.path}}?pkg_page={{page_number}}"
+                                    class="{% if page_number == pkg_list.number %}current{% endif %}"
+                                >
+                                    {{page_number}}
+                                </a>
+                            {% endif %}
+                        </li>
+                        {% endfor %}
+                    </ul>
+                </nav>
             </div>
             <ul id="pkgs">
                 {% for object in pkg_list %}
