@@ -1,9 +1,10 @@
 import re
-from typing import Any
+from typing import Any, TypedDict
 
+from django.contrib.postgres.aggregates import JSONBAgg
 from django.contrib.postgres.search import SearchVector
 from django.core.paginator import Paginator
-from django.db.models import Q
+from django.db.models import Count, Func, Q, Value
 from django.db.models.manager import BaseManager
 from django.http import HttpRequest, HttpResponse
 from django.shortcuts import get_object_or_404, render
@@ -20,16 +21,34 @@ class HomeView(TemplateView):
     template_name = "home_view.html"
 
 
+class AggregatedNixDerivation(TypedDict):
+    id: int
+    system: str
+
+
+aggregate_pkg = Func(
+    Value("system"), "system", Value("id"), "id", function="jsonb_build_object"
+)
+
+
+class GroupedNixDerivation(TypedDict):
+    name: str
+    metadata__description: str
+    pkg_count: int
+    grouped_pkg_objects: list[AggregatedNixDerivation]
+
+
 def triage_view(request: HttpRequest) -> HttpResponse:
     template_name = "triage_view.html"
-    paginate_by = 25
+    paginate_by = 10
 
     cve_qs = (
         Container.objects.prefetch_related("descriptions", "affected", "cve")
         .exclude(title="")
         .order_by("id", "-date_public")
     )
-    pkg_qs = NixDerivation.objects.prefetch_related("metadata").order_by("id")
+    pkg_qs = NixDerivation.objects.prefetch_related("metadata").order_by("name")
+
     cve_objects = cve_qs.all()
     pkg_objects = pkg_qs.all()
 
@@ -46,26 +65,35 @@ def triage_view(request: HttpRequest) -> HttpResponse:
         ).distinct("id")
 
     if search_pkgs:
-        pkg_objects = (
-            pkg_qs.annotate(
-                search=SearchVector(
-                    "attribute",
-                    "name",
-                    "system",
-                    "metadata__name",
-                    "metadata__description",
-                )
+        pkg_objects = pkg_qs.annotate(
+            search=SearchVector(
+                "attribute",
+                "name",
+                "system",
+                "metadata__name",
+                "metadata__description",
             )
-            .filter(search=search_pkgs)
-            .distinct("id")
-        )
+        ).filter(search=search_pkgs)
 
     # Paginators
     cve_paginator = Paginator(cve_objects, paginate_by)
     cve_page_number = 1  # request.GET.get('page_cves', 1)
     cve_page_objects = cve_paginator.get_page(cve_page_number)
 
-    pkg_paginator = Paginator(pkg_objects, paginate_by)
+    # NOTE(alejandrosame): Alternatively, don't group here but use group in template.
+    # This will require using a custom paginator that guarantees that derivations with the same name
+    # are returned by the same page (otherwise, some could have been left at PAGE-1 or PAGE+1)
+    # NOTE(alejandrosame): I wanted to use the type
+    #   ValuesQuerySet[NixDerivation, GroupedNixDerivation]
+    # instead of
+    #   ValuesQuerySet[NixDerivation, dict[str, Any]].
+    # So this type check will need to be done with tests.
+    grouped_pkg_objects = pkg_objects.values("name", "metadata__description").annotate(
+        pkg_count=Count("name"),
+        grouped_pkg_objects=JSONBAgg(aggregate_pkg, ordering="id"),
+    )
+
+    pkg_paginator = Paginator(grouped_pkg_objects, paginate_by)
     pkg_page_number = 1  # request.GET.get('page_pkgs', 1)
     pkg_page_objects = pkg_paginator.get_page(pkg_page_number)
 

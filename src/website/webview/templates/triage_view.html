@@ -41,15 +41,59 @@
         padding: 10px;
         border: 1px solid #ccc;
         margin-bottom: 10px;
-        cursor: pointer;
-    }
-
-    .selected {
-        background-color: #f2f2f2;
     }
 
     form > input {
         display: none;
+    }
+
+    .pkg-header-description {
+        cursor: pointer;
+    }
+
+    .grouped-pkgs > hr {
+        text-align: center;
+        border: 0;
+        border-bottom: 1px solid #ccc;
+    }
+
+    .grouped-pkgs {
+        list-style: none;
+        padding: 0px;
+        display: none;
+        overflow: hidden;
+    }
+
+    .grouped-pkgs > li {
+        padding-left: 18px;
+        display: block;
+        overflow: hidden;
+    }
+
+    .cve-db-id, .pkg-count {
+        font-size: 0.7em;
+        font-weight: bold;
+        color: #555;
+    }
+
+    .cve-id, .pkg-name {
+        font-weight: bold;
+    }
+
+    .cve-header-description-long, .pkg-header-description-long {
+        padding-top: 5px;
+        font-size: 0.75em;
+    }
+
+    .pkg-db-id {
+        font-size: 0.7em;
+        font-weight: bold;
+        color: #555;
+    }
+
+    .pkg-system {
+        font-weight: bold;
+        font-size: 0.8em;
     }
 
 </style>
@@ -72,8 +116,19 @@
             </div>
             <ul class="cves">
                 {% for object in cve_list %}
-                <li class="selectable-item" data-id={{object.id}}>
-                    {{ object.title }}: {{ object.cve.cve_id }} ({{ object.id }})
+                <li class="cve-entry selectable-item" data-id="{{object.id}}">
+                    <div class="cve-header">
+                        <span class="cve-header-actions">
+                            <input type="checkbox" class="cve-checkbox">
+                        </span>
+                        <span class="cve-header-description">
+                            <span class="cve-db-id">{{ object.id }}</span>
+                            <span class="cve-id">{{ object.cve.cve_id }}</span>
+                            <div class="cve-header-description-long">
+                                {{ object.title }}
+                            </div>
+                        </span>
+                    </div>
                 </li>
                 {% endfor %}
             </ul>
@@ -91,8 +146,29 @@
             </div>
             <ul id="pkgs">
                 {% for object in pkg_list %}
-                <li class="selectable-item" data-id={{object.id}}>
-                    {{ object.name }}: {{ object.metadata.description }} ({{ object.id }})
+                <li class="pkg-entry selectable-item" data-id="{{forloop.counter0}}">
+                    <div class="pkg-header">
+                        <span class="pkg-header-actions">
+                            <input type="checkbox" class="parent-checkbox">
+                        </span>
+                        <span class="pkg-header-description">
+                            <span class="pkg-count">({{ object.pkg_count }} pkgs)</span>
+                            <span class="pkg-name">{{ object.name }}</span>
+                            <div class="pkg-header-description-long">
+                                {{ object.metadata__description }}
+                            </div>
+                        </span>
+                    </div>
+                    <ul class="grouped-pkgs">
+                        <hr>
+                        {% for grouped in object.grouped_pkg_objects %}
+                        <li data-id="{{grouped.id}}">
+                            <input type="checkbox" class="child-checkbox">
+                            <span class="pkg-db-id">{{grouped.id}}</span>
+                            <span class="pkg-system">{{grouped.system}}</span>
+                        </li>
+                        {% endfor %}
+                    </ul>
                 </li>
                 {% endfor %}
             </ul>
@@ -101,20 +177,30 @@
 </form>
 
 <script>
-    const selectableItems = document.querySelectorAll('.selectable-item');
+    // Add custom logic for each pkg entry
+    var pkgEntries = document.querySelectorAll('.pkg-entry');
+    pkgEntries.forEach(function(entry) {
+        // Select/deselect all children when parent is selected/deselected
+        var parentCheckbox = entry.querySelector('.parent-checkbox');
+        var childCheckboxes = entry.querySelectorAll('.child-checkbox');
 
-    selectableItems.forEach(item => {
-        item.addEventListener('click', () => {
-            toggleItemSelection(item);
+        parentCheckbox.addEventListener('change', function() {
+            childCheckboxes.forEach(function(checkbox) {
+                checkbox.checked = parentCheckbox.checked;
+            });
+        });
+
+        // Show/collapse list of children when cliking on parent description
+        var collapseTrigger = entry.querySelector('.pkg-header-description');
+        var collapsible = entry.querySelector(".grouped-pkgs");
+
+        collapseTrigger.addEventListener('click', function() {
+            if (collapsible.style.display === "block") {
+                collapsible.style.display = "none";
+            } else {
+                collapsible.style.display = "block";
+            }
         });
     });
-
-    function toggleItemSelection(item) {
-        if (item.classList.contains('selected')) {
-            item.classList.remove('selected');
-        } else {
-            item.classList.add('selected');
-        }
-    }
 </script>
 {% endblock content %}
