@@ -108,6 +108,8 @@ def triage_view(request: HttpRequest) -> HttpResponse:
         "pkg_paginator_range": pkg_paginator.get_elided_page_range(  # type: ignore
             pkg_page_number, on_each_side=pages_on_each_side, on_ends=pages_on_ends
         ),
+        "cve_paginator_ellipsis": cve_paginator.ELLIPSIS,  # type: ignore
+        "pkg_paginator_ellipsis": pkg_paginator.ELLIPSIS,  # type: ignore
         "search_cves": search_cves,
         "search_pkgs": search_pkgs,
     }

@@ -143,15 +143,16 @@
                         />
                     </div>
                 </div>
-                <nav class="pagination">
+                <nav class="pagination cve">
                     <ul>
                         {% for page_number in cve_paginator_range %}
                         <li class="index">
-                            {% if page_number == paginator.ELLIPSIS %}
-                                {{paginator.ELLIPSIS}}
+                            {% if page_number == cve_paginator_ellipsis %}
+                                {{cve_paginator_ellipsis}}
                             {% else %}
                                 <a  href="{{request.path}}?cve_page={{page_number}}"
                                     class="{% if page_number == cve_list.number %}current{% endif %}"
+                                    data-id="{{page_number}}"
                                 >
                                     {{page_number}}
                                 </a>
@@ -191,15 +192,16 @@
                         />
                     </div>
                 </div>
-                <nav class="pagination">
+                <nav class="pagination pkg">
                     <ul>
                         {% for page_number in pkg_paginator_range %}
                         <li class="index">
-                            {% if page_number == paginator.ELLIPSIS %}
-                                {{paginator.ELLIPSIS}}
+                            {% if page_number == pkg_paginator_ellipsis %}
+                                {{pkg_paginator_ellipsis}}
                             {% else %}
                                 <a  href="{{request.path}}?pkg_page={{page_number}}"
                                     class="{% if page_number == pkg_list.number %}current{% endif %}"
+                                    data-id="{{page_number}}"
                                 >
                                     {{page_number}}
                                 </a>
@@ -243,11 +245,11 @@
 
 <script>
     // Add custom logic for each pkg entry
-    var pkgEntries = document.querySelectorAll('.pkg-entry');
+    const pkgEntries = document.querySelectorAll('.pkg-entry');
     pkgEntries.forEach(function(entry) {
         // Select/deselect all children when parent is selected/deselected
-        var parentCheckbox = entry.querySelector('.parent-checkbox');
-        var childCheckboxes = entry.querySelectorAll('.child-checkbox');
+        const parentCheckbox = entry.querySelector('.parent-checkbox');
+        const childCheckboxes = entry.querySelectorAll('.child-checkbox');
 
         parentCheckbox.addEventListener('change', function() {
             childCheckboxes.forEach(function(checkbox) {
@@ -256,8 +258,8 @@
         });
 
         // Show/collapse list of children when cliking on parent description
-        var collapseTrigger = entry.querySelector('.pkg-header-description');
-        var collapsible = entry.querySelector(".grouped-pkgs");
+        const collapseTrigger = entry.querySelector('.pkg-header-description');
+        const collapsible = entry.querySelector(".grouped-pkgs");
 
         collapseTrigger.addEventListener('click', function() {
             if (collapsible.style.display === "block") {
@@ -267,5 +269,58 @@
             }
         });
     });
+
+    // Keep existing search parameters when clicking pagination anchors
+    const cvePageNav = document.querySelector(".pagination.cve")
+    const pkgPageNav = document.querySelector(".pagination.pkg")
+
+    bindPageClick = (pageNav, searchParamName) => pageNav.querySelectorAll('a').forEach(anchor => {
+        anchor.addEventListener('click', function(event) {
+            event.preventDefault();
+            const page = anchor.getAttribute("data-id")
+            const url = new URL(this.href);
+            const searchParams = new URLSearchParams(window.location.search);
+            searchParams.set(searchParamName, page);
+            searchParams.sort();
+            url.search = searchParams;
+            window.location.href = url.toString();
+        });
+    });
+
+    bindPageClick(cvePageNav, "cve_page")
+    bindPageClick(pkgPageNav, "pkg_page")
+
+    // Keep existing search parameters when submitting form
+    const form = document.querySelector("form")
+
+    form.addEventListener('submit', function(event) {
+        event.preventDefault();
+        const { action } = form;
+        const url = new URL(action, window.location);
+        const searchParams = new URLSearchParams(window.location.search);
+        const formData = new FormData(form);
+        for (const [k, v] of formData.entries()) {
+            // Clear page search when its filter has changed
+            const previousValue = searchParams.get(k) || "";
+            if (previousValue != v) {
+                if (k.includes("cve")) {
+                    searchParams.delete("cve_page");
+                } else if (k.includes("pkg")) {
+                    searchParams.delete("pkg_page");
+                }
+            }
+
+            // Clean empty query params from URL
+            if (v != "") {
+                searchParams.set(k, v);
+            } else {
+                searchParams.delete(k);
+            }
+        }
+        searchParams.sort();
+        url.search = searchParams;
+        window.location.href = url.toString();
+    });
+
 </script>
 {% endblock content %}
