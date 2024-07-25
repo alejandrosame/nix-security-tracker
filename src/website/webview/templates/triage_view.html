@@ -80,7 +80,7 @@
         cursor: pointer;
     }
 
-    .grouped-pkgs > hr {
+    hr {
         text-align: center;
         border: 0;
         border-bottom: 1px solid #ccc;
@@ -125,12 +125,45 @@
         font-size: 0.8em;
     }
 
+    *:has(> select#id_cve), *:has(> select#id_derivations) {
+        display: none;
+    }
+
+    #issueForm {
+        display: flex;
+        flex-direction: column-reverse;
+        align-items: stretch;
+        gap: 10px;
+        margin-top: 20px;
+    }
+
+    .issueFormFields {
+        display: flex;
+        flex-direction: row-reverse;
+        gap: 10px;
+        margin: 5px;
+    }
+
+    label {
+        font-weight: bold;
+        display: inline-block;
+        margin-bottom: 5px;
+    }
+
+    div:has(> #id_description_text) {
+        flex-grow:1;
+    }
+
+    #id_status, #id_description_text {
+        width: 100%;
+    }
+
 </style>
 {% endblock extra_head %}
 
 {% block content %}
 
-<form method="get">
+<form id="getForm" method="get">
     <input type=submit> <!-- Allow submitting form with Enter -->
     <div class="container">
         <div class="column">
@@ -167,7 +200,7 @@
                 <li class="cve-entry selectable-item" data-id="{{object.id}}">
                     <div class="cve-header">
                         <span class="cve-header-actions">
-                            <input type="checkbox" class="cve-checkbox">
+                            <input data-id="{{object.id}}" type="checkbox" class="cve-checkbox">
                         </span>
                         <span class="cve-header-description">
                             <span class="cve-db-id">{{ object.id }}</span>
@@ -229,8 +262,8 @@
                     <ul class="grouped-pkgs">
                         <hr>
                         {% for grouped in object.grouped_pkg_objects %}
-                        <li data-id="{{grouped.id}}">
-                            <input type="checkbox" class="child-checkbox">
+                        <li>
+                            <input data-id="{{grouped.id}}" type="checkbox" class="child-checkbox">
                             <span class="pkg-db-id">{{grouped.id}}</span>
                             <span class="pkg-system">{{grouped.system}}</span>
                         </li>
@@ -243,30 +276,125 @@
     </div>
 </form>
 
+<hr>
+
+<form id="issueForm" method="post">
+    <div class="issueFormFields">
+        {% csrf_token %}
+        {{ form.as_div }}
+    </div>
+    <button type="submit">Create Nixpkgs issue</button>
+</form>
+
 <script>
-    // Add custom logic for each pkg entry
+    // Utils
+    const getCheckboxCallback = function (targetSelectId) {
+        const callback = function(event) {
+            const select = document.getElementById(targetSelectId);
+            const id = event.target.getAttribute("data-id")
+            if (event.target.checked) { // Add option
+                const option = document.createElement("option");
+                option.text = id;
+                option.value = id;
+                option.selected = true;
+
+                select.add(option);
+            } else { // Remove option
+                for (var i = 0; i < select.options.length; i++) {
+                    if (select.options[i].value === id) {
+                        select.options[i].remove();
+                        break;
+                    }
+                }
+            }
+        };
+        return callback
+    };
+
+    {% comment %}
+        NOTE(alejandrosame): If we want to allow selecting packages and CVEs from different pages,
+        then we'll have to refactor to manage state with localstorage.
+    {% endcomment %}
+    // On refresh, set all checkboxes as unchecked
+    const allCheckboxes = document.querySelectorAll('input[type="checkbox"]')
+    allCheckboxes.forEach(function (checkbox) {
+        checkbox.checked = false;
+    });
+
+    // Add logic for each pkg entry
     const pkgEntries = document.querySelectorAll('.pkg-entry');
     pkgEntries.forEach(function(entry) {
-        // Select/deselect all children when parent is selected/deselected
         const parentCheckbox = entry.querySelector('.parent-checkbox');
         const childCheckboxes = entry.querySelectorAll('.child-checkbox');
 
-        parentCheckbox.addEventListener('change', function() {
-            childCheckboxes.forEach(function(checkbox) {
-                checkbox.checked = parentCheckbox.checked;
-            });
-        });
-
-        // Show/collapse list of children when cliking on parent description
         const collapseTrigger = entry.querySelector('.pkg-header-description');
         const collapsible = entry.querySelector(".grouped-pkgs");
 
-        collapseTrigger.addEventListener('click', function() {
+        // Events to be dispatched
+        const changeNoParentTriggerEvent = new CustomEvent('changeNoParentTrigger', {
+            bubbles: true,
+            cancelable: true
+        });
+        const checkParentStatusEvent = new CustomEvent('checkParentStatus', {
+            bubbles: true,
+            cancelable: true
+        });
+
+        // Show/collapse list of children when cliking on parent description
+        collapseTrigger.addEventListener('click', function(event) {
             if (collapsible.style.display === "block") {
                 collapsible.style.display = "none";
             } else {
                 collapsible.style.display = "block";
             }
+        });
+
+        // Keep parent checkbox state consistent with children childCheckboxes.
+        // This means that if all children are checked, parent should be checked.
+        parentCheckbox.addEventListener('checkParentStatus', function(event) {
+            var allChildrenAreSelected = true;
+
+            childCheckboxes.forEach(function(checkbox) {
+                if (!checkbox.checked) { allChildrenAreSelected = false; }
+            });
+
+            if (allChildrenAreSelected) {
+                parentCheckbox.checked = true;
+            } else {
+                parentCheckbox.checked = false;
+            }
+
+        });
+
+        // Select/deselect all children when parent is selected/deselected
+        parentCheckbox.addEventListener('change', function(event) {
+            childCheckboxes.forEach(function(checkbox) {
+                if (checkbox.checked != parentCheckbox.checked){
+                    checkbox.checked = parentCheckbox.checked;
+                    checkbox.dispatchEvent(changeNoParentTriggerEvent);
+                }
+            });
+        });
+
+        // On child checkbox change:
+        //  - Add/remove options when pkg checkboxes change
+        //  - Trigger checkParentStatusEvent to keep parent checkbox in sync with children state
+        childCheckboxes.forEach(function(checkbox) {
+            const callback = getCheckboxCallback("id_derivations");
+            checkbox.addEventListener("changeNoParentTrigger", callback);
+            checkbox.addEventListener("change",  function(event) {
+                callback(event);
+                parentCheckbox.dispatchEvent(checkParentStatusEvent);
+            });
+        });
+    });
+
+    // Add logic for each cve entry
+    const cveCheckboxes = document.querySelectorAll('.cve-checkbox');
+    cveCheckboxes.forEach(function(checkbox) {
+        const callback = getCheckboxCallback("id_cve");
+        checkbox.addEventListener("change",  function(event) {
+            callback(event);
         });
     });
 
@@ -291,7 +419,7 @@
     bindPageClick(pkgPageNav, "pkg_page")
 
     // Keep existing search parameters when submitting form
-    const form = document.querySelector("form")
+    const form = document.querySelector("form#getForm")
 
     form.addEventListener('submit', function(event) {
         event.preventDefault();

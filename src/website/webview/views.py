@@ -1,17 +1,19 @@
 import re
 from typing import Any, TypedDict
 
+from django import forms
 from django.contrib.postgres.aggregates import JSONBAgg
 from django.contrib.postgres.search import SearchVector
 from django.core.paginator import Paginator
 from django.db.models import Count, Func, Q, Value
 from django.db.models.manager import BaseManager
-from django.http import HttpRequest, HttpResponse
+from django.http import HttpRequest, HttpResponse, HttpResponseRedirect
 from django.shortcuts import get_object_or_404, render
 from django.views.generic import DetailView, ListView, TemplateView
 from shared.models import (
     Container,
     CveRecord,
+    Description,
     NixDerivation,
     NixpkgsIssue,
 )
@@ -38,11 +40,47 @@ class GroupedNixDerivation(TypedDict):
     grouped_pkg_objects: list[AggregatedNixDerivation]
 
 
+class NixpkgsIssueForm(forms.ModelForm):
+    description_text = forms.CharField(widget=forms.Textarea)
+
+    class Meta:
+        model = NixpkgsIssue
+        fields = ["cve", "derivations", "description_text", "status"]
+
+    def __init__(self, *args: Any, **kwargs: dict[str, Any]) -> None:
+        super().__init__(*args, **kwargs)
+        self.fields["cve"].choices = []
+        self.fields["derivations"].choices = []
+        self.fields["description_text"].label = "Description"
+
+    def save(self, *args: Any, **kwargs: dict[str, Any]) -> None:
+        issue = NixpkgsIssue.objects.create(
+            status=self.cleaned_data["status"],
+            description=Description.objects.create(
+                value=self.cleaned_data["description_text"]
+            ),
+        )
+        issue.cve.set(CveRecord.objects.filter(id__in=self.cleaned_data["cve"]))
+        issue.derivations.set(
+            NixDerivation.objects.filter(id__in=self.cleaned_data["derivations"])
+        )
+        issue.save()
+
+
 def triage_view(request: HttpRequest) -> HttpResponse:
     template_name = "triage_view.html"
     paginate_by = 10
     pages_on_each_side = 2
     pages_on_ends = 1
+
+    form = NixpkgsIssueForm()
+    if request.method == "POST":
+        form = NixpkgsIssueForm(request.POST)
+
+        if form.is_valid():
+            form.save()
+            # Redirect to same page
+            return HttpResponseRedirect(request.path_info)
 
     cve_qs = (
         Container.objects.prefetch_related("descriptions", "affected", "cve")
@@ -112,6 +150,7 @@ def triage_view(request: HttpRequest) -> HttpResponse:
         "pkg_paginator_ellipsis": pkg_paginator.ELLIPSIS,  # type: ignore
         "search_cves": search_cves,
         "search_pkgs": search_pkgs,
+        "form": form,
     }
 
     return render(request, template_name, context)
