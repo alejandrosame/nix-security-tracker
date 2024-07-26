@@ -3,9 +3,13 @@ from typing import Any, TypedDict
 
 from django import forms
 from django.contrib.postgres.aggregates import JSONBAgg
-from django.contrib.postgres.search import SearchVector
+from django.contrib.postgres.search import (
+    SearchQuery,
+    SearchRank,
+    SearchVector,
+)
 from django.core.paginator import Paginator
-from django.db.models import Count, Func, Q, Value
+from django.db.models import Count, Func, Max, Q, Value
 from django.db.models.manager import BaseManager
 from django.http import HttpRequest, HttpResponse, HttpResponseRedirect
 from django.shortcuts import get_object_or_404, render
@@ -105,15 +109,27 @@ def triage_view(request: HttpRequest) -> HttpResponse:
         ).distinct("id")
 
     if search_pkgs:
-        pkg_objects = pkg_qs.annotate(
-            search=SearchVector(
-                "attribute",
-                "name",
-                "system",
-                "metadata__name",
-                "metadata__description",
+        # TODO: improve this message
+        # Do a 2-rank search to prevent description contents from penalizing hits on "name" and "attribute"
+        search_vector = SearchVector("name") + SearchVector("attribute")
+        secondary_search_vector = SearchVector("metadata__description")
+        search_query = SearchQuery(search_pkgs)
+        # Check https://www.postgresql.org/docs/current/textsearch-controls.html#TEXTSEARCH-RANKING
+        # for the meaning of normalization values.
+        norm_value = Value(1)
+        pkg_objects = (
+            pkg_qs.annotate(
+                rank=SearchRank(search_vector, search_query, normalization=norm_value)
             )
-        ).filter(search=search_pkgs)
+            .annotate(
+                rank2=SearchRank(
+                    secondary_search_vector, search_query, normalization=norm_value
+                )
+            )
+            .filter(Q(rank__gte=0.01) | Q(rank2__gte=0.01))
+        )
+    else:
+        pkg_objects = pkg_qs.annotate(rank=Value(0.0)).annotate(rank2=Value(0.0))
 
     # Paginators
     cve_paginator = Paginator(cve_objects, paginate_by)
@@ -128,9 +144,15 @@ def triage_view(request: HttpRequest) -> HttpResponse:
     # instead of
     #   ValuesQuerySet[NixDerivation, dict[str, Any]].
     # So this type check will need to be done with tests.
-    grouped_pkg_objects = pkg_objects.values("name", "metadata__description").annotate(
-        pkg_count=Count("name"),
-        grouped_pkg_objects=JSONBAgg(aggregate_pkg, ordering="id"),
+    grouped_pkg_objects = (
+        pkg_objects.values("name", "metadata__description")
+        .annotate(
+            pkg_count=Count("name"),
+            max_rank=Max("rank"),
+            max_rank2=Max("rank2"),
+            grouped_pkg_objects=JSONBAgg(aggregate_pkg, ordering="id"),
+        )
+        .order_by("-max_rank", "-max_rank2", "name")
     )
 
     pkg_paginator = Paginator(grouped_pkg_objects, paginate_by)
