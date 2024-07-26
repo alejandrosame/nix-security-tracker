@@ -33,7 +33,7 @@ class AggregatedNixDerivation(TypedDict):
 
 
 aggregate_pkg = Func(
-    Value("system"), "system", Value("id"), "id", function="jsonb_build_object"
+    Value("attribute"), "attribute", Value("id"), "id", function="jsonb_build_object"
 )
 
 
