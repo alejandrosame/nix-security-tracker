@@ -131,7 +131,7 @@
 
     #issueForm {
         display: flex;
-        flex-direction: column-reverse;
+        flex-direction: column;
         align-items: stretch;
         gap: 10px;
         margin-top: 20px;
@@ -156,6 +156,10 @@
 
     #id_status, #id_description_text {
         width: 100%;
+    }
+
+    .errorsFromHiddenInputs {
+        background: pink;
     }
 
 </style>
@@ -279,11 +283,43 @@
 <hr>
 
 <form id="issueForm" method="post">
+    <button type="submit">Create Nixpkgs issue</button>
+    {% if form.cve.errors or form.derivations.errors %}
+        <div class="errorsFromHiddenInputs container">
+            <div class="column">
+            {% if form.cve.errors %}
+                <label>CVE errors</label>
+                <ul>
+                {% for error in form.cve.errors %}
+                    {% if error == "This field is required."%}
+                        <li>Please, select at least 1 CVE to create an issue.</li>
+                    {% else %}
+                        <li>{{error}}</li>
+                    {% endif %}
+                {% endfor %}
+                </ul>
+            {% endif %}
+            </div>
+            <div class="column">
+            {% if form.derivations.errors %}
+            <label>PKG errors</label>
+                <ul>
+                {% for error in form.derivations.errors %}
+                    {% if error == "This field is required."%}
+                        <li>Please, select at least 1 package to create an issue.</li>
+                    {% else %}
+                        <li>{{error}}</li>
+                    {% endif %}
+                {% endfor %}
+                </ul>
+            {% endif %}
+            </div>
+        </div>
+    {% endif %}
     <div class="issueFormFields">
         {% csrf_token %}
         {{ form.as_div }}
     </div>
-    <button type="submit">Create Nixpkgs issue</button>
 </form>
 
 <script>
@@ -450,5 +486,18 @@
         window.location.href = url.toString();
     });
 
+    // Get rid of required attribute for hidden form controls
+    document.querySelector('#id_cve').removeAttribute("required")
+    document.querySelector('#id_derivations').removeAttribute("required")
+
+    // Reset checkbox status in case of failed form
+    {% for id in form.cve.value %}
+    document.querySelector('.cve-checkbox[data-id="{{id}}"]').click();
+    {% endfor %}
+    {% for id in form.derivations.value %}
+    document.querySelector('.child-checkbox[data-id="{{id}}"]').click();
+    document.querySelector('.pkg-entry:has(.child-checkbox[data-id="228"]) .pkg-header-description').click();
+    {% endfor %}
+    // End of checkbox status reset
 </script>
 {% endblock content %}
