@@ -19,6 +19,7 @@ from shared.models import (
     CveRecord,
     Description,
     NixDerivation,
+    NixDerivationMeta,
     NixpkgsIssue,
 )
 
@@ -74,7 +75,7 @@ def triage_view(request: HttpRequest) -> HttpResponse:
         .exclude(title="")
         .order_by("id", "-date_public")
     )
-    pkg_qs = NixDerivation.objects.prefetch_related("metadata").order_by("name")
+    pkg_qs = NixDerivation.objects.order_by("name")
 
     cve_objects = cve_qs.all()
     pkg_objects = pkg_qs.all()
@@ -119,17 +120,15 @@ def triage_view(request: HttpRequest) -> HttpResponse:
     cve_page_number = request.GET.get("cve_page", 1)
     cve_page_objects = cve_paginator.get_page(cve_page_number)
 
-    # NOTE(alejandrosame): Alternatively, don't group here but use group in template.
-    # This will require using a custom paginator that guarantees that derivations with the same name
-    # are returned by the same page (otherwise, some could have been left at PAGE-1 or PAGE+1)
     grouped_pkg_objects = (
-        pkg_objects.values("name", "metadata__description")
+        pkg_objects.values("name")
         .annotate(
             pkg_count=Count("name"),
             max_rank=Max("rank"),
             max_rank2=Max("rank2"),
             ids=ArrayAgg("id", ordering="id"),
             attributes=ArrayAgg("attribute", ordering="id"),
+            meta_id=Max("metadata_id"),
         )
         .order_by("-max_rank", "-max_rank2", "name")
     )
@@ -137,10 +136,17 @@ def triage_view(request: HttpRequest) -> HttpResponse:
     pkg_paginator = Paginator(grouped_pkg_objects, paginate_by)
     pkg_page_number = request.GET.get("pkg_page", 1)
     pkg_page_objects = pkg_paginator.get_page(pkg_page_number)
+    description_id_list = [object["meta_id"] for object in pkg_page_objects.object_list]
+    pkg_descriptions = NixDerivationMeta.objects.values("id", "description").filter(
+        id__in=description_id_list
+    )
+    pkg_descriptions_dict = dict([(desc["id"], desc) for desc in pkg_descriptions])
+    sorted_pkg_descriptions = [pkg_descriptions_dict[id] for id in description_id_list]
 
     context = {
         "cve_list": cve_page_objects,
         "pkg_list": pkg_page_objects,
+        "pkg_descriptions": sorted_pkg_descriptions,
         "cve_paginator_range": cve_paginator.get_elided_page_range(  # type: ignore
             cve_page_number, on_each_side=pages_on_each_side, on_ends=pages_on_ends
         ),

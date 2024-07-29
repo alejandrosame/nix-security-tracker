@@ -259,7 +259,12 @@
                             <span class="pkg-count">({{ object.pkg_count }} pkgs)</span>
                             <span class="pkg-name">{{ object.name }}</span>
                             <div class="pkg-header-description-long">
-                                {{ object.metadata__description }}
+                                {% comment %} Pretend that the two lists are zipped. {% endcomment %}
+                                {% for description in pkg_descriptions %}
+                                    {% if forloop.counter == forloop.parentloop.counter %}
+                                        {{description.description}}
+                                    {% endif %}
+                                {% endfor %}
                             </div>
                         </span>
                     </div>
