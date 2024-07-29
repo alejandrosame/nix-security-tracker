@@ -265,13 +265,16 @@
                     </div>
                     <ul class="grouped-pkgs">
                         <hr>
-                        {% for grouped in object.grouped_pkg_objects %}
-                        <li>
-                            <input data-id="{{grouped.id}}" type="checkbox" class="child-checkbox">
-                            <span class="pkg-db-id">{{grouped.id}}</span>
-                            <span class="pkg-system">{{grouped.attribute}}</span>
-                        </li>
-                        {% endfor %}
+                        {% comment %} Pretend that the two lists are zipped. {% endcomment %}
+                        {% for id in object.ids %}{% for attribute in object.attributes %}
+                            {% if forloop.counter == forloop.parentloop.counter %}
+                            <li>
+                                <input data-id="{{id}}" type="checkbox" class="child-checkbox">
+                                <span class="pkg-db-id">{{id}}</span>
+                                <span class="pkg-system">{{attribute}}</span>
+                            </li>
+                            {% endif %}
+                        {% endfor %}{% endfor %}
                     </ul>
                 </li>
                 {% endfor %}

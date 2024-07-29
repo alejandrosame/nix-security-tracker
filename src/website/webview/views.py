@@ -1,15 +1,15 @@
 import re
-from typing import Any, TypedDict
+from typing import Any
 
 from django import forms
-from django.contrib.postgres.aggregates import JSONBAgg
+from django.contrib.postgres.aggregates import ArrayAgg
 from django.contrib.postgres.search import (
     SearchQuery,
     SearchRank,
     SearchVector,
 )
 from django.core.paginator import Paginator
-from django.db.models import Count, Func, Max, Q, Value
+from django.db.models import Count, Max, Q, Value
 from django.db.models.manager import BaseManager
 from django.http import HttpRequest, HttpResponse, HttpResponseRedirect
 from django.shortcuts import get_object_or_404, render
@@ -25,23 +25,6 @@ from shared.models import (
 
 class HomeView(TemplateView):
     template_name = "home_view.html"
-
-
-class AggregatedNixDerivation(TypedDict):
-    id: int
-    system: str
-
-
-aggregate_pkg = Func(
-    Value("attribute"), "attribute", Value("id"), "id", function="jsonb_build_object"
-)
-
-
-class GroupedNixDerivation(TypedDict):
-    name: str
-    metadata__description: str
-    pkg_count: int
-    grouped_pkg_objects: list[AggregatedNixDerivation]
 
 
 class NixpkgsIssueForm(forms.ModelForm):
@@ -139,18 +122,14 @@ def triage_view(request: HttpRequest) -> HttpResponse:
     # NOTE(alejandrosame): Alternatively, don't group here but use group in template.
     # This will require using a custom paginator that guarantees that derivations with the same name
     # are returned by the same page (otherwise, some could have been left at PAGE-1 or PAGE+1)
-    # NOTE(alejandrosame): I wanted to use the type
-    #   ValuesQuerySet[NixDerivation, GroupedNixDerivation]
-    # instead of
-    #   ValuesQuerySet[NixDerivation, dict[str, Any]].
-    # So this type check will need to be done with tests.
     grouped_pkg_objects = (
         pkg_objects.values("name", "metadata__description")
         .annotate(
             pkg_count=Count("name"),
             max_rank=Max("rank"),
             max_rank2=Max("rank2"),
-            grouped_pkg_objects=JSONBAgg(aggregate_pkg, ordering="id"),
+            ids=ArrayAgg("id", ordering="id"),
+            attributes=ArrayAgg("attribute", ordering="id"),
         )
         .order_by("-max_rank", "-max_rank2", "name")
     )
