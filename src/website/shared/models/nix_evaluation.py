@@ -1,4 +1,5 @@
 from django.contrib.postgres import fields
+from django.contrib.postgres.indexes import BTreeIndex
 from django.db import models
 from django.utils.translation import gettext_lazy as _
 
@@ -277,3 +278,8 @@ class NixDerivation(models.Model):
     def __str__(self) -> str:
         hash = self.derivation_path.split("-")[0].split("/")[-1]
         return f"{self.name} {hash[:8]}"
+
+    class Meta:
+        indexes = [
+            BTreeIndex(fields=["name"]),
+        ]
