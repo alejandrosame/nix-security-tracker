@@ -166,12 +166,31 @@ def triage_view(request: HttpRequest) -> HttpResponse:
     search_pkgs = request.GET.get("search_pkgs")
 
     if search_cves:
-        cve_objects = cve_qs.filter(
-            Q(search_vector=search_cves)
-            | Q(descriptions__search_vector=search_cves)
-            | Q(affected__search_vector=search_cves)
-            | Q(affected__cpes__search_vector=search_cves)
-        ).distinct("id")
+        search_query = SearchQuery(search_cves)
+        norm_value = Value(1)
+        # TODO(alejandrosame): Figure out how to combine SearchVectorFields directly.
+        # e.g: rank=SearchRank(F("search_vector")+F("affected__search_vector")+F("affected__cpes__search_vector"), ...),
+        cve_objects = cve_qs.annotate(
+            rank_sub1=SearchRank(
+                F("search_vector"), search_query, normalization=norm_value
+            ),
+            rank_sub2=SearchRank(
+                F("affected__search_vector"), search_query, normalization=norm_value
+            ),
+            rank_sub3=SearchRank(
+                F("affected__cpes__search_vector"),
+                search_query,
+                normalization=norm_value,
+            ),
+            rank2=SearchRank(
+                F("descriptions__search_vector"), search_query, normalization=norm_value
+            ),
+        ).filter(
+            Q(rank_sub1__gte=0.01)
+            | Q(rank_sub2__gte=0.01)
+            | Q(rank_sub3__gte=0.01)
+            | Q(rank2__gte=0.01)
+        )
 
     if search_pkgs:
         # Do a 2-rank search to prevent description contents from penalizing hits on "name" and "attribute"
@@ -179,19 +198,12 @@ def triage_view(request: HttpRequest) -> HttpResponse:
         # Check https://www.postgresql.org/docs/current/textsearch-controls.html#TEXTSEARCH-RANKING
         # for the meaning of normalization values.
         norm_value = Value(1)
-        pkg_objects = (
-            pkg_qs.annotate(
-                rank=SearchRank(
-                    F("search_vector"), search_query, normalization=norm_value
-                )
-            )
-            .annotate(
-                rank2=SearchRank(
-                    F("metadata__search_vector"), search_query, normalization=norm_value
-                )
-            )
-            .filter(Q(rank__gte=0.01) | Q(rank2__gte=0.01))
-        )
+        pkg_objects = pkg_qs.annotate(
+            rank=SearchRank(F("search_vector"), search_query, normalization=norm_value),
+            rank2=SearchRank(
+                F("metadata__search_vector"), search_query, normalization=norm_value
+            ),
+        ).filter(Q(rank__gte=0.01) | Q(rank2__gte=0.01))
     else:
         pkg_objects = pkg_qs.annotate(rank=Value(0.0)).annotate(rank2=Value(0.0))
 
