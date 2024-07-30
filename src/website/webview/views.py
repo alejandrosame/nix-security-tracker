@@ -1,5 +1,9 @@
 import re
+import typing
 from typing import Any
+
+if typing.TYPE_CHECKING:
+    from django.db.models.query import ValuesQuerySet
 
 from django import forms
 from django.contrib.postgres.aggregates import ArrayAgg
@@ -8,7 +12,7 @@ from django.contrib.postgres.search import (
     SearchRank,
     SearchVector,
 )
-from django.core.paginator import Paginator
+from django.core.paginator import Page, Paginator
 from django.db.models import (
     Count,
     F,
@@ -21,6 +25,7 @@ from django.db.models.functions import RowNumber
 from django.db.models.manager import BaseManager
 from django.http import HttpRequest, HttpResponse, HttpResponseRedirect
 from django.shortcuts import get_object_or_404, render
+from django.utils.functional import cached_property
 from django.views.generic import DetailView, ListView, TemplateView
 from shared.models import (
     Container,
@@ -61,6 +66,75 @@ class NixpkgsIssueForm(forms.ModelForm):
             NixDerivation.objects.filter(id__in=self.cleaned_data["derivations"])
         )
         issue.save()
+
+
+class GroupedPackagePaginator(Paginator):
+    @cached_property
+    def unique_names(self) -> "ValuesQuerySet[Any, dict[str, Any]]":
+        return NixDerivation.objects.values("name").distinct()
+
+    @cached_property
+    def count(self) -> int:
+        return self.unique_names.count()
+
+    @cached_property
+    def ordered_object_list(self) -> "ValuesQuerySet[Any, dict[str, Any]]":
+        return self.object_list.values(
+            "id", "name", "attribute", "metadata_id", "rank", "rank2"
+        ).annotate(
+            row_number=Window(
+                expression=RowNumber(),
+                partition_by=[F("name")],
+                order_by=[F("rank").desc(), F("rank2").desc()],
+            )
+        )
+
+    @cached_property
+    def ordered_names(self) -> "ValuesQuerySet[Any, Any]":
+        return (
+            self.object_list.values(
+                "id", "name", "attribute", "metadata_id", "rank", "rank2"
+            )
+            .annotate(
+                row_number=Window(
+                    expression=RowNumber(),
+                    partition_by=[F("name")],
+                    order_by=[F("rank").desc(), F("rank2").desc()],
+                )
+            )
+            .filter(row_number=1)
+            .values_list("name", flat=True)
+        )
+
+    def grouped_pkg_page_objects(
+        self, sliced_ordered_names: "ValuesQuerySet[Any, Any]"
+    ) -> "ValuesQuerySet[Any, dict[str, Any]]":
+        return (
+            self.ordered_object_list.values("name")
+            .filter(name__in=sliced_ordered_names)
+            .annotate(
+                pkg_count=Count("name"),
+                max_rank=Max("rank"),
+                max_rank2=Max("rank2"),
+                ids=ArrayAgg("id", ordering="id"),
+                attributes=ArrayAgg("attribute", ordering="id"),
+                metadata_id=Max("metadata_id"),
+            )
+        )
+
+    def page(self, number: int) -> Page:
+        number = self.validate_number(number)
+        bottom = (number - 1) * self.per_page
+        top = bottom + self.per_page
+        if top + self.orphans >= self.count:
+            top = self.count
+        return super()._get_page(  # type: ignore
+            self.grouped_pkg_page_objects(
+                sliced_ordered_names=self.ordered_names[bottom:top]
+            ),
+            number,
+            self,
+        )
 
 
 def triage_view(request: HttpRequest) -> HttpResponse:
@@ -128,46 +202,20 @@ def triage_view(request: HttpRequest) -> HttpResponse:
     cve_page_number = request.GET.get("cve_page", 1)
     cve_page_objects = cve_paginator.get_page(cve_page_number)
 
-    ordered_by_name_ranks = pkg_objects.values(
-        "id", "name", "attribute", "metadata_id", "rank", "rank2"
-    ).annotate(
-        row_number=Window(
-            expression=RowNumber(),
-            partition_by=[F("name")],
-            order_by=[F("rank").desc(), F("rank2").desc()],
-        )
-    )
+    pkg_paginator = GroupedPackagePaginator(pkg_objects, paginate_by)
+    pkg_page_number = request.GET.get("pkg_page", 1)
+    pkg_page_objects = pkg_paginator.get_page(pkg_page_number)
 
-    pkg_paginator = Paginator(ordered_by_name_ranks.filter(row_number=1), paginate_by)
-    pkg_page_number = int(request.GET.get("pkg_page", 1))
-    pkgs_in_page = pkg_paginator.get_page(pkg_page_number).object_list
-
-    page_names = [n["name"] for n in pkgs_in_page]
-    description_id_list = [object["metadata_id"] for object in pkgs_in_page]
-
+    description_id_list = [object["metadata_id"] for object in pkg_page_objects]
     pkg_descriptions = NixDerivationMeta.objects.values("id", "description").filter(
         id__in=description_id_list
     )
     pkg_descriptions_dict = dict([(desc["id"], desc) for desc in pkg_descriptions])
     sorted_pkg_descriptions = [pkg_descriptions_dict[id] for id in description_id_list]
 
-    grouped_pkg_page_objects = (
-        ordered_by_name_ranks.values("name")
-        .filter(name__in=page_names)
-        .annotate(
-            pkg_count=Count("name"),
-            max_rank=Max("rank"),
-            max_rank2=Max("rank2"),
-            ids=ArrayAgg("id", ordering="id"),
-            attributes=ArrayAgg("attribute", ordering="id"),
-            meta_id=Max("metadata_id"),
-        )
-    )
-
     context = {
         "cve_list": cve_page_objects,
-        "pkg_list": grouped_pkg_page_objects,
-        "pkg_current_page": pkg_page_number,
+        "pkg_list": pkg_page_objects,
         "pkg_descriptions": sorted_pkg_descriptions,
         "cve_paginator_range": cve_paginator.get_elided_page_range(  # type: ignore
             cve_page_number, on_each_side=pages_on_each_side, on_ends=pages_on_ends
@@ -175,8 +223,6 @@ def triage_view(request: HttpRequest) -> HttpResponse:
         "pkg_paginator_range": pkg_paginator.get_elided_page_range(  # type: ignore
             pkg_page_number, on_each_side=pages_on_each_side, on_ends=pages_on_ends
         ),
-        "cve_paginator_ellipsis": cve_paginator.ELLIPSIS,  # type: ignore
-        "pkg_paginator_ellipsis": pkg_paginator.ELLIPSIS,  # type: ignore
         "search_cves": search_cves,
         "search_pkgs": search_pkgs,
         "form": form,

@@ -184,8 +184,8 @@
                     <ul>
                         {% for page_number in cve_paginator_range %}
                         <li class="index">
-                            {% if page_number == cve_paginator_ellipsis %}
-                                {{cve_paginator_ellipsis}}
+                            {% if page_number == cve_list.paginator.ELLIPSIS %}
+                                {{cve_list.paginator.ELLIPSIS}}
                             {% else %}
                                 <a  href="{{request.path}}?cve_page={{page_number}}"
                                     class="{% if page_number == cve_list.number %}current{% endif %}"
@@ -233,11 +233,11 @@
                     <ul>
                         {% for page_number in pkg_paginator_range %}
                         <li class="index">
-                            {% if page_number == pkg_paginator_ellipsis %}
-                                {{pkg_paginator_ellipsis}}
+                            {% if page_number == pkg_list.paginator.ELLIPSIS %}
+                                {{pkg_list.paginator.ELLIPSIS}}
                             {% else %}
                                 <a  href="{{request.path}}?pkg_page={{page_number}}"
-                                    class="{% if page_number == pkg_current_page %}current{% endif %}"
+                                    class="{% if page_number == pkg_list.number %}current{% endif %}"
                                     data-id="{{page_number}}"
                                 >
                                     {{page_number}}
