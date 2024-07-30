@@ -237,7 +237,7 @@
                                 {{pkg_paginator_ellipsis}}
                             {% else %}
                                 <a  href="{{request.path}}?pkg_page={{page_number}}"
-                                    class="{% if page_number == pkg_list.number %}current{% endif %}"
+                                    class="{% if page_number == pkg_current_page %}current{% endif %}"
                                     data-id="{{page_number}}"
                                 >
                                     {{page_number}}

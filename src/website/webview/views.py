@@ -9,7 +9,15 @@ from django.contrib.postgres.search import (
     SearchVector,
 )
 from django.core.paginator import Paginator
-from django.db.models import Count, Max, Q, Value
+from django.db.models import (
+    Count,
+    F,
+    Max,
+    Q,
+    Value,
+    Window,
+)
+from django.db.models.functions import RowNumber
 from django.db.models.manager import BaseManager
 from django.http import HttpRequest, HttpResponse, HttpResponseRedirect
 from django.shortcuts import get_object_or_404, render
@@ -120,8 +128,32 @@ def triage_view(request: HttpRequest) -> HttpResponse:
     cve_page_number = request.GET.get("cve_page", 1)
     cve_page_objects = cve_paginator.get_page(cve_page_number)
 
-    grouped_pkg_objects = (
-        pkg_objects.values("name")
+    ordered_by_name_ranks = pkg_objects.values(
+        "id", "name", "attribute", "metadata_id", "rank", "rank2"
+    ).annotate(
+        row_number=Window(
+            expression=RowNumber(),
+            partition_by=[F("name")],
+            order_by=[F("rank").desc(), F("rank2").desc()],
+        )
+    )
+
+    pkg_paginator = Paginator(ordered_by_name_ranks.filter(row_number=1), paginate_by)
+    pkg_page_number = int(request.GET.get("pkg_page", 1))
+    pkgs_in_page = pkg_paginator.get_page(pkg_page_number).object_list
+
+    page_names = [n["name"] for n in pkgs_in_page]
+    description_id_list = [object["metadata_id"] for object in pkgs_in_page]
+
+    pkg_descriptions = NixDerivationMeta.objects.values("id", "description").filter(
+        id__in=description_id_list
+    )
+    pkg_descriptions_dict = dict([(desc["id"], desc) for desc in pkg_descriptions])
+    sorted_pkg_descriptions = [pkg_descriptions_dict[id] for id in description_id_list]
+
+    grouped_pkg_page_objects = (
+        ordered_by_name_ranks.values("name")
+        .filter(name__in=page_names)
         .annotate(
             pkg_count=Count("name"),
             max_rank=Max("rank"),
@@ -130,22 +162,12 @@ def triage_view(request: HttpRequest) -> HttpResponse:
             attributes=ArrayAgg("attribute", ordering="id"),
             meta_id=Max("metadata_id"),
         )
-        .order_by("-max_rank", "-max_rank2", "name")
     )
-
-    pkg_paginator = Paginator(grouped_pkg_objects, paginate_by)
-    pkg_page_number = request.GET.get("pkg_page", 1)
-    pkg_page_objects = pkg_paginator.get_page(pkg_page_number)
-    description_id_list = [object["meta_id"] for object in pkg_page_objects.object_list]
-    pkg_descriptions = NixDerivationMeta.objects.values("id", "description").filter(
-        id__in=description_id_list
-    )
-    pkg_descriptions_dict = dict([(desc["id"], desc) for desc in pkg_descriptions])
-    sorted_pkg_descriptions = [pkg_descriptions_dict[id] for id in description_id_list]
 
     context = {
         "cve_list": cve_page_objects,
-        "pkg_list": pkg_page_objects,
+        "pkg_list": grouped_pkg_page_objects,
+        "pkg_current_page": pkg_page_number,
         "pkg_descriptions": sorted_pkg_descriptions,
         "cve_paginator_range": cve_paginator.get_elided_page_range(  # type: ignore
             cve_page_number, on_each_side=pages_on_each_side, on_ends=pages_on_ends
