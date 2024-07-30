@@ -10,7 +10,6 @@ from django.contrib.postgres.aggregates import ArrayAgg
 from django.contrib.postgres.search import (
     SearchQuery,
     SearchRank,
-    SearchVector,
 )
 from django.core.paginator import Page, Paginator
 from django.db.models import (
@@ -175,21 +174,20 @@ def triage_view(request: HttpRequest) -> HttpResponse:
         ).distinct("id")
 
     if search_pkgs:
-        # TODO: improve this message
         # Do a 2-rank search to prevent description contents from penalizing hits on "name" and "attribute"
-        search_vector = SearchVector("name") + SearchVector("attribute")
-        secondary_search_vector = SearchVector("metadata__description")
         search_query = SearchQuery(search_pkgs)
         # Check https://www.postgresql.org/docs/current/textsearch-controls.html#TEXTSEARCH-RANKING
         # for the meaning of normalization values.
         norm_value = Value(1)
         pkg_objects = (
             pkg_qs.annotate(
-                rank=SearchRank(search_vector, search_query, normalization=norm_value)
+                rank=SearchRank(
+                    F("search_vector"), search_query, normalization=norm_value
+                )
             )
             .annotate(
                 rank2=SearchRank(
-                    secondary_search_vector, search_query, normalization=norm_value
+                    F("metadata__search_vector"), search_query, normalization=norm_value
                 )
             )
             .filter(Q(rank__gte=0.01) | Q(rank2__gte=0.01))
