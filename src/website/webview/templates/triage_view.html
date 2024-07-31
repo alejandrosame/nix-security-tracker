@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% load triagetags %}
 
 {% block extra_head %}
 <style>
@@ -76,14 +77,46 @@
         display: none;
     }
 
-    .pkg-header-description {
-        cursor: pointer;
-    }
-
     hr {
         text-align: center;
         border: 0;
         border-bottom: 1px solid #ccc;
+    }
+
+    .cve-header-description {
+        cursor: pointer;
+    }
+
+    .cve-extra-info {
+        font-size: 0.7em;
+        display: none;
+    }
+
+    .column-cve {
+        flex:1;
+        display: flex;
+    }
+
+    .cve-field-value {
+        margin-left: 5px;
+    }
+
+    .cpe-list.hide-extra > li:nth-child(n+5) {
+        display:none;
+    }
+
+    button.cpe-extra {
+        font-size: 1em;
+        margin-top: 5px;
+        margin-left: 10px;
+    }
+
+    .cve-description {
+        margin-top: 5px;
+    }
+
+    .pkg-header-description {
+        cursor: pointer;
     }
 
     .grouped-pkgs {
@@ -208,11 +241,51 @@
                         </span>
                         <span class="cve-header-description">
                             <span class="cve-db-id">{{ object.id }}</span>
-                            <span class="cve-id">{{ object.cve.cve_id }}</span>
+                            <span class="cve-id">{{ object.cve_id }}</span>
                             <div class="cve-header-description-long">
-                                {{ object.title }}
+                                {{ object.title | default_to_na }}
                             </div>
                         </span>
+
+                        <div class="cve-extra-info">
+                            <hr>
+                            <div class="container">
+                                <span class="column-cve">
+                                    <label>Package:</label>
+                                    <span class="cve-field-value">{{ object.affected_package_name|default_to_na }}</span>
+                                </span>
+                                <span class="column-cve">
+                                    <label>Repo:</label>
+                                    <span class="cve-field-value">{{ object.affected_repo|default_to_na }}</span>
+                                </span>
+                            </div>
+                            <div class="container">
+                                <span class="column-cve">
+                                    <label>Product:</label>
+                                    <span class="cve-field-value">{{ object.affected_product|default_to_na }}</span>
+                                </span>
+                                <span class="column-cve">
+                                    <label>Vendor:</label>
+                                    <span class="cve-field-value">{{ object.affected_vendor|default_to_na }}</span>
+                                </span>
+                            </div>
+                            <div class="container">
+                                <label>Cpes:</label>
+                                <div>
+                                    <ul data-id={{object.id}} class="column cpe-list hide-extra">
+                                        {% for cpe in object.affected_cpes|clean_nones %}
+                                            <li> {{ cpe }} </li>
+                                        {% empty %}
+                                            <li> No CPEs found. </li>
+                                        {% endfor %}
+                                    </ul>
+                                    <button class="cpe-extra hide-extra" data-id={{object.id}} data-count={{object.affected_cpes|length|add:"-4"}}>
+                                        Show {{object.affected_cpes|length|add:"-4"}} CPEs more
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="cve-description">{{object.description|default:"No description found."}}</div>
+                        </div>
                     </div>
                 </li>
                 {% endfor %}
@@ -332,6 +405,16 @@
 
 <script>
     // Utils
+    const addShowChildrenListener = function (collapseTrigger, collapsible) {
+        collapseTrigger.addEventListener('click', function(event) {
+            if (collapsible.style.display === "block") {
+                collapsible.style.display = "none";
+            } else {
+                collapsible.style.display = "block";
+            }
+        });
+    };
+
     const getCheckboxCallback = function (targetSelectId) {
         const callback = function(event) {
             const select = document.getElementById(targetSelectId);
@@ -366,6 +449,38 @@
     });
 
     // Add logic for each pkg entry
+    const cveEntries = document.querySelectorAll('.cve-entry');
+    cveEntries.forEach(function(entry) {
+        const collapseTrigger = entry.querySelector('.cve-header-description');
+        const collapsible = entry.querySelector(".cve-extra-info");
+        // Show/collapse extra info when cliking on CVE header
+        addShowChildrenListener(collapseTrigger, collapsible);
+
+        const cpeExtraButtons = entry.querySelectorAll('button.cpe-extra');
+        cpeExtraButtons.forEach(function (button) {
+            // Starting style
+            if (button.dataset.count <= 0) {
+                button.style.display = "none";
+            }
+
+            button.addEventListener('click', function(event) {
+                event.preventDefault();
+                const cpeList = entry.querySelector(`.cpe-list[data-id="${event.target.dataset.id}"]`);
+                // Show/hide extra CPE when the list is too big
+                if (event.target.classList.contains("hide-extra")) {
+                    event.target.classList.remove("hide-extra");
+                    event.target.innerText = `Hide ${event.target.dataset.count} CPEs`;
+                    cpeList.classList.remove("hide-extra");
+                } else {
+                    event.target.classList.add("hide-extra");
+                    event.target.innerText = `Show ${event.target.dataset.count} CPEs more`;
+                    cpeList.classList.add("hide-extra");
+                }
+            });
+        });
+    });
+
+    // Add logic for each pkg entry
     const pkgEntries = document.querySelectorAll('.pkg-entry');
     pkgEntries.forEach(function(entry) {
         const parentCheckbox = entry.querySelector('.parent-checkbox');
@@ -373,6 +488,8 @@
 
         const collapseTrigger = entry.querySelector('.pkg-header-description');
         const collapsible = entry.querySelector(".grouped-pkgs");
+        // Show/collapse list of children when cliking on parent description
+        addShowChildrenListener(collapseTrigger, collapsible);
 
         // Events to be dispatched
         const changeNoParentTriggerEvent = new CustomEvent('changeNoParentTrigger', {
@@ -384,14 +501,6 @@
             cancelable: true
         });
 
-        // Show/collapse list of children when cliking on parent description
-        collapseTrigger.addEventListener('click', function(event) {
-            if (collapsible.style.display === "block") {
-                collapsible.style.display = "none";
-            } else {
-                collapsible.style.display = "block";
-            }
-        });
 
         // Keep parent checkbox state consistent with children childCheckboxes.
         // This means that if all children are checked, parent should be checked.

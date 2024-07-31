@@ -1,6 +1,6 @@
 from typing import Any
 
-from django.contrib.postgres.indexes import GinIndex
+from django.contrib.postgres.indexes import BTreeIndex, GinIndex
 from django.contrib.postgres.search import SearchVectorField
 from django.core.validators import RegexValidator
 from django.db import models
@@ -59,6 +59,11 @@ class CveRecord(models.Model):
 
     def __str__(self) -> str:
         return self.cve_id
+
+    class Meta:
+        indexes = [
+            BTreeIndex(fields=["cve_id"]),
+        ]
 
 
 class Product(models.Model):

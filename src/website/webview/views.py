@@ -113,11 +113,11 @@ class GroupedPackagePaginator(Paginator):
             .filter(name__in=sliced_ordered_names)
             .annotate(
                 pkg_count=Count("name"),
-                max_rank=Max("rank"),
-                max_rank2=Max("rank2"),
                 ids=ArrayAgg("id", ordering="id"),
                 attributes=ArrayAgg("attribute", ordering="id"),
                 metadata_id=Max("metadata_id"),
+                max_rank=Max("rank"),
+                max_rank2=Max("rank2"),
             )
         )
 
@@ -153,8 +153,17 @@ def triage_view(request: HttpRequest) -> HttpResponse:
 
     cve_qs = (
         Container.objects.prefetch_related("descriptions", "affected", "cve")
-        .exclude(title="")
-        .order_by("id", "-date_public")
+        .values(
+            "title",
+            "descriptions__value",
+            "affected__vendor",
+            "affected__product",
+            "affected__package_name",
+            "affected__repo",
+            "affected__cpes__name",
+            "cve__cve_id",
+        )
+        .order_by("-cve__cve_id")
     )
     pkg_qs = NixDerivation.objects.order_by("name")
 
@@ -191,6 +200,13 @@ def triage_view(request: HttpRequest) -> HttpResponse:
             | Q(rank_sub3__gte=0.01)
             | Q(rank2__gte=0.01)
         )
+    else:
+        cve_objects = cve_qs.annotate(
+            rank_sub1=Value(0.0),
+            rank_sub2=Value(0.0),
+            rank_sub3=Value(0.0),
+            rank2=Value(0.0),
+        )
 
     if search_pkgs:
         # Do a 2-rank search to prevent description contents from penalizing hits on "name" and "attribute"
@@ -205,10 +221,38 @@ def triage_view(request: HttpRequest) -> HttpResponse:
             ),
         ).filter(Q(rank__gte=0.01) | Q(rank2__gte=0.01))
     else:
-        pkg_objects = pkg_qs.annotate(rank=Value(0.0)).annotate(rank2=Value(0.0))
+        pkg_objects = pkg_qs.annotate(rank=Value(0.0), rank2=Value(0.0))
 
     # Paginators
-    cve_paginator = Paginator(cve_objects, paginate_by)
+    grouped_cves = (
+        cve_objects.values("id")
+        .annotate(
+            affected_count=Count("id"),
+            cve_id=Max("cve__cve_id"),
+            title=Max("title"),
+            description=Max("descriptions__value"),
+            affected_vendor=Max("affected__vendor"),
+            affected_product=Max("affected__product"),
+            affected_package_name=Max("affected__package_name"),
+            affected_repo=Max("affected__repo"),
+            affected_cpes=ArrayAgg(
+                "affected__cpes__name", ordering="affected__cpes__name"
+            ),
+            max_rank_sub1=Max("rank_sub1"),
+            max_rank_sub2=Max("rank_sub2"),
+            max_rank_sub3=Max("rank_sub3"),
+            max_rank2=Max("rank2"),
+        )
+        .order_by(
+            "max_rank_sub1",
+            "max_rank_sub2",
+            "max_rank_sub3",
+            "max_rank2",
+            "-cve__cve_id",
+        )
+    )
+
+    cve_paginator = Paginator(grouped_cves, paginate_by)
     cve_page_number = request.GET.get("cve_page", 1)
     cve_page_objects = cve_paginator.get_page(cve_page_number)
 
