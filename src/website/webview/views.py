@@ -90,19 +90,8 @@ class GroupedPackagePaginator(Paginator):
 
     @cached_property
     def ordered_names(self) -> "ValuesQuerySet[Any, Any]":
-        return (
-            self.object_list.values(
-                "id", "name", "attribute", "metadata_id", "rank", "rank2"
-            )
-            .annotate(
-                row_number=Window(
-                    expression=RowNumber(),
-                    partition_by=[F("name")],
-                    order_by=[F("rank").desc(), F("rank2").desc()],
-                )
-            )
-            .filter(row_number=1)
-            .values_list("name", flat=True)
+        return self.ordered_object_list.filter(row_number=1).values_list(
+            "name", flat=True
         )
 
     def grouped_pkg_page_objects(
@@ -136,6 +125,94 @@ class GroupedPackagePaginator(Paginator):
         )
 
 
+class GroupedCVEPaginator(Paginator):
+    # NOTE(alejandrosame): We might actually want to group on cve.cve_id instead of container.id.
+    # In that case:
+    #   - why would there be more thatn one container for the same cve.cve_id?
+    #   - how to properly aggregate, for example, container.title?
+    @cached_property
+    def unique_cves(self) -> "ValuesQuerySet[Any, dict[str, Any]]":
+        return Container.objects.values("id").distinct()
+
+    @cached_property
+    def count(self) -> int:
+        return self.unique_cves.count()
+
+    @cached_property
+    def ordered_object_list(self) -> "ValuesQuerySet[Any, dict[str, Any]]":
+        return self.object_list.values(
+            "id",
+            "title",
+            "affected__vendor",
+            "affected__product",
+            "affected__package_name",
+            "affected__repo",
+            "affected__cpes__name",
+            "cve__cve_id",
+            "descriptions__value",
+            "rank_sub1",
+            "rank_sub2",
+            "rank_sub3",
+            "rank2",
+        ).annotate(
+            row_number=Window(
+                expression=RowNumber(),
+                partition_by=[F("id")],
+                order_by=[
+                    F("rank_sub1").desc(),
+                    F("rank_sub2").desc(),
+                    F("rank_sub3").desc(),
+                    F("rank2").desc(),
+                ],
+            )
+        )
+
+    @cached_property
+    def ordered_ids(self) -> "ValuesQuerySet[Any, Any]":
+        return self.ordered_object_list.filter(row_number=1).values_list(
+            "id", flat=True
+        )
+
+    def grouped_cve_page_objects(
+        self, sliced_ordered_ids: "ValuesQuerySet[Any, Any]"
+    ) -> "ValuesQuerySet[Any, dict[str, Any]]":
+        return (
+            self.ordered_object_list.values("id")
+            .filter(id__in=sliced_ordered_ids)
+            .annotate(
+                affected_count=Count("id"),
+                cve_id=Max("cve__cve_id"),
+                title=Max("title"),
+                description=Max("descriptions__value"),
+                affected_vendor=Max("affected__vendor"),
+                affected_product=Max("affected__product"),
+                affected_package_name=Max("affected__package_name"),
+                affected_repo=Max("affected__repo"),
+                affected_cpes=ArrayAgg(
+                    "affected__cpes__name", ordering="affected__cpes__name"
+                ),
+                max_rank_sub1=Max("rank_sub1"),
+                max_rank_sub2=Max("rank_sub2"),
+                max_rank_sub3=Max("rank_sub3"),
+                max_rank2=Max("rank2"),
+            )
+        )
+
+    def page(self, number: int) -> Page:
+        number = self.validate_number(number)
+        bottom = (number - 1) * self.per_page
+        top = bottom + self.per_page
+        if top + self.orphans >= self.count:
+            top = self.count
+        return super()._get_page(  # type: ignore
+            self.grouped_cve_page_objects(
+                sliced_ordered_ids=self.ordered_ids[bottom:top]
+            ),
+            number,
+            self,
+        )
+
+
 def triage_view(request: HttpRequest) -> HttpResponse:
     template_name = "triage_view.html"
     paginate_by = 10
@@ -151,20 +228,7 @@ def triage_view(request: HttpRequest) -> HttpResponse:
             # Redirect to same page
             return HttpResponseRedirect(request.path_info)
 
-    cve_qs = (
-        Container.objects.prefetch_related("descriptions", "affected", "cve")
-        .values(
-            "title",
-            "descriptions__value",
-            "affected__vendor",
-            "affected__product",
-            "affected__package_name",
-            "affected__repo",
-            "affected__cpes__name",
-            "cve__cve_id",
-        )
-        .order_by("-cve__cve_id")
-    )
+    cve_qs = Container.objects.order_by("-cve__cve_id")
     pkg_qs = NixDerivation.objects.order_by("name")
 
     cve_objects = cve_qs.all()
@@ -224,35 +288,7 @@ def triage_view(request: HttpRequest) -> HttpResponse:
         pkg_objects = pkg_qs.annotate(rank=Value(0.0), rank2=Value(0.0))
 
     # Paginators
-    grouped_cves = (
-        cve_objects.values("id")
-        .annotate(
-            affected_count=Count("id"),
-            cve_id=Max("cve__cve_id"),
-            title=Max("title"),
-            description=Max("descriptions__value"),
-            affected_vendor=Max("affected__vendor"),
-            affected_product=Max("affected__product"),
-            affected_package_name=Max("affected__package_name"),
-            affected_repo=Max("affected__repo"),
-            affected_cpes=ArrayAgg(
-                "affected__cpes__name", ordering="affected__cpes__name"
-            ),
-            max_rank_sub1=Max("rank_sub1"),
-            max_rank_sub2=Max("rank_sub2"),
-            max_rank_sub3=Max("rank_sub3"),
-            max_rank2=Max("rank2"),
-        )
-        .order_by(
-            "max_rank_sub1",
-            "max_rank_sub2",
-            "max_rank_sub3",
-            "max_rank2",
-            "-cve__cve_id",
-        )
-    )
-
-    cve_paginator = Paginator(grouped_cves, paginate_by)
+    cve_paginator = GroupedCVEPaginator(cve_objects, paginate_by)
     cve_page_number = request.GET.get("cve_page", 1)
     cve_page_objects = cve_paginator.get_page(cve_page_number)
 
