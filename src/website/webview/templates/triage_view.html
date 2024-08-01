@@ -272,16 +272,18 @@
                             <div class="container">
                                 <label>Cpes:</label>
                                 <div>
+                                    {% with affected_cpes=object.affected_cpes|clean_nones extra_count=object.affected_cpes|clean_nones|length|add:"-4" %}
                                     <ul data-id={{object.id}} class="column cpe-list hide-extra">
-                                        {% for cpe in object.affected_cpes|clean_nones %}
+                                        {% for cpe in affected_cpes %}
                                             <li> {{ cpe }} </li>
                                         {% empty %}
                                             <li> No CPEs found. </li>
                                         {% endfor %}
                                     </ul>
-                                    <button class="cpe-extra hide-extra" data-id={{object.id}} data-count={{object.affected_cpes|length|add:"-4"}}>
-                                        Show {{object.affected_cpes|length|add:"-4"}} CPEs more
+                                    <button class="cpe-extra hide-extra" data-id={{object.id}} data-count={{extra_count}}>
+                                        Show {{ extra_count }} CPEs more
                                     </button>
+                                    {% endwith %}
                                 </div>
                             </div>
                             <div class="cve-description">{{object.description|default:"No description found."}}</div>
