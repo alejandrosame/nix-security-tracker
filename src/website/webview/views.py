@@ -15,6 +15,7 @@ from django.core.paginator import Page, Paginator
 from django.db.models import (
     Count,
     F,
+    FilteredRelation,
     Max,
     Q,
     Value,
@@ -27,7 +28,9 @@ from django.shortcuts import get_object_or_404, render
 from django.utils.functional import cached_property
 from django.views.generic import DetailView, ListView, TemplateView
 from shared.models import (
+    AffectedProduct,
     Container,
+    Cpe,
     CveRecord,
     Description,
     NixDerivation,
@@ -157,13 +160,13 @@ class GroupedCVEPaginator(Paginator):
         return self.object_list.values(
             "id",
             "title",
-            "affected__vendor",
-            "affected__product",
-            "affected__package_name",
-            "affected__repo",
-            "affected__cpes__name",
+            "f_affected__vendor",
+            "f_affected__product",
+            "f_affected__package_name",
+            "f_affected__repo",
+            "f_affected__cpes__name",
             "cve__cve_id",
-            "descriptions__value",
+            "f_descriptions__value",
             "rank_sub1",
             "rank_sub2",
             "rank_sub3",
@@ -196,13 +199,13 @@ class GroupedCVEPaginator(Paginator):
             .annotate(
                 affected_count=Count("id"),
                 title=Max("title"),
-                description=Max("descriptions__value"),
-                affected_vendor=Max("affected__vendor"),
-                affected_product=Max("affected__product"),
-                affected_package_name=Max("affected__package_name"),
-                affected_repo=Max("affected__repo"),
+                description=Max("f_descriptions__value"),
+                affected_vendor=Max("f_affected__vendor"),
+                affected_product=Max("f_affected__product"),
+                affected_package_name=Max("f_affected__package_name"),
+                affected_repo=Max("f_affected__repo"),
                 affected_cpes=ArrayAgg(
-                    "affected__cpes__name", ordering="affected__cpes__name"
+                    "f_affected__cpes__name", ordering="f_affected__cpes__name"
                 ),
                 max_rank_sub1=Max("rank_sub1"),
                 max_rank_sub2=Max("rank_sub2"),
@@ -241,6 +244,7 @@ def triage_view(request: HttpRequest) -> HttpResponse:
             # Redirect to same page
             return HttpResponseRedirect(request.path_info)
 
+    """
     cve_qs = Container.objects.order_by("-cve__cve_id")
     pkg_qs = NixDerivation.objects.order_by("name")
 
@@ -323,6 +327,183 @@ def triage_view(request: HttpRequest) -> HttpResponse:
     )
     pkg_descriptions_dict = dict([(desc["id"], desc) for desc in pkg_descriptions])
     sorted_pkg_descriptions = [pkg_descriptions_dict[id] for id in description_id_list]
+
+    """
+
+    cve_page_number = request.GET.get("cve_page", 1)
+    pkg_page_number = request.GET.get("pkg_page", 1)
+
+    search_cves = "python"
+    search_pkgs = "python"
+
+    pkg_paginator = GroupedPackagePaginator(
+        NixDerivation.objects.annotate(rank=Value(0.0), rank2=Value(0.0))
+        .order_by("name")
+        .all(),
+        paginate_by,
+        filtered=False,  # type: ignore
+    )
+    pkg_page_number = request.GET.get("pkg_page", 1)
+    pkg_page_objects = pkg_paginator.get_page(pkg_page_number)
+
+    description_id_list = [object["metadata_id"] for object in pkg_page_objects]
+    pkg_descriptions = NixDerivationMeta.objects.values("id", "description").filter(
+        id__in=description_id_list
+    )
+    pkg_descriptions_dict = dict([(desc["id"], desc) for desc in pkg_descriptions])
+    sorted_pkg_descriptions = [pkg_descriptions_dict[id] for id in description_id_list]
+
+    # filtered_containers = (
+    #    Container.objects.annotate(
+    #            f_descriptions=FilteredRelation('descriptions', condition=Q(descriptions__search_vector=search_cves)),
+    #            f_affected=FilteredRelation('affected', condition=(Q(affected__search_vector=search_cves))),
+    #            f_cpes=FilteredRelation('affected__cpes', condition=(Q(affected__cpes__search_vector=search_cves)))
+    #        )
+    #        .values("id", "title", "cve_id", "cve__cve_id", "f_affected", "f_descriptions", "f_cpes")
+    #        # .exclude("affected","descriptions")
+    #        .filter(
+    #            Q(search_vector=search_cves)
+    #            | Q(descriptions__search_vector=search_cves)
+    #            | Q(affected__search_vector=search_cves)
+    #            | Q(affected__cpes__search_vector=search_cves)
+    #        )
+    # )
+
+    filtered_containers = (
+        Container.objects.annotate(
+            f_descriptions=FilteredRelation(
+                "descriptions", condition=(Q(descriptions__search_vector=search_cves))
+            ),
+            f_affected=FilteredRelation(
+                "affected", condition=(Q(affected__search_vector=search_cves))
+            ),
+            f_cpes=FilteredRelation(
+                "affected__cpes",
+                condition=(Q(affected__cpes__search_vector=search_cves)),
+            ),
+        ).values(
+            "id",
+            "title",
+            "cve_id",
+            "cve__cve_id",
+            "f_affected",
+            "f_descriptions",
+            "f_cpes",
+        )
+        # .exclude("affected","descriptions")
+        # .filter(
+        #    Q(search_vector=search_cves)
+        #    | Q(descriptions__search_vector=search_cves)
+        #    | Q(affected__search_vector=search_cves)
+        #    | Q(affected__cpes__search_vector=search_cves)
+        # )
+    )
+
+    print("containers", Container.objects.all().count())
+    print("filtered containers", filtered_containers.count())
+    print(
+        "c",
+        Container.objects.filter(
+            Q(search_vector=search_cves)
+            | Q(descriptions__search_vector=search_cves)
+            | Q(affected__search_vector=search_cves)
+            | Q(affected__cpes__search_vector=search_cves)
+        )
+        .distinct("id")
+        .count(),
+    )
+    print("d", Container.objects.filter(search_vector=search_cves).count())
+    print("e", filtered_containers.filter(search_vector=search_cves).count())
+
+    descriptions = [
+        d["id"]
+        for d in Description.objects.filter(search_vector=search_cves)
+        .values("id")
+        .all()
+    ]
+    print("desc", len(descriptions))
+    cpes = [
+        c["id"]
+        for c in Cpe.objects.filter(search_vector=search_cves).values("id").all()
+    ]
+    print("cpes", len(cpes))
+    affected = [
+        a["id"]
+        for a in AffectedProduct.objects.filter(
+            Q(search_vector=search_cves) | Q(cpes__id__in=cpes)
+        )
+        .values("id")
+        .all()
+    ]
+    print("affected", len(affected))
+    ccontainers = Container.objects.filter(
+        Q(search_vector=search_cves)
+        | Q(affected__id__in=affected)
+        | Q(descriptions__id__in=descriptions)
+    )
+
+    print("cc", ccontainers.count())
+
+    search_query = SearchQuery(search_cves)
+    norm_value = Value(1)
+
+    ranked_containers = (
+        # Container.objects.filter(id__in=Subquery(filtered_containers))
+        filtered_containers
+        # Container.objects.filter(search_vector=search_cves)
+        .annotate(
+            rank_sub1=SearchRank(
+                F("search_vector"), search_query, normalization=norm_value
+            ),
+            rank_sub2=SearchRank(
+                F("affected__search_vector"), search_query, normalization=norm_value
+            ),
+            rank_sub3=SearchRank(
+                F("affected__cpes__search_vector"),
+                search_query,
+                normalization=norm_value,
+            ),
+            rank2=SearchRank(
+                F("descriptions__search_vector"), search_query, normalization=norm_value
+            ),
+        ).filter(
+            Q(rank_sub1__gte=0.01)
+            | Q(rank_sub2__gte=0.01)
+            | Q(rank_sub3__gte=0.01)
+            | Q(rank2__gte=0.01)
+        )
+    )
+
+    cve_paginator = GroupedCVEPaginator(
+        ranked_containers,
+        paginate_by,
+        filtered=True,  # type: ignore
+    )
+
+    # cve_paginator = GroupedCVEPaginator(
+    #    Container.objects.annotate(
+    #        rank_sub1=Value(0.0),
+    #        rank_sub2=Value(0.0),
+    #        rank_sub3=Value(0.0),
+    #        rank2=Value(0.0),
+    #    ).order_by("-id").all(),
+    #    paginate_by,
+    #    filtered=False,  # type: ignore
+    # )
+    cve_page_number = request.GET.get("cve_page", 1)
+    cve_page_objects = cve_paginator.get_page(cve_page_number)
+
+    """
+    pkg_objects = NixDerivation.objects.annotate(
+            search=SearchVector(
+                "attribute",
+                "name",
+                "system",
+                "metadata__name",
+                "metadata__description",
+            )
+        ).filter(search=search_pkgs)
+    """
 
     context = {
         "cve_list": cve_page_objects,
