@@ -237,11 +237,11 @@
                 <li class="cve-entry selectable-item" data-id="{{object.id}}">
                     <div class="cve-header">
                         <span class="cve-header-actions">
-                            <input data-id="{{object.id}}" type="checkbox" class="cve-checkbox">
+                            <input data-id="{{object.cve_id}}" type="checkbox" class="cve-checkbox">
                         </span>
                         <span class="cve-header-description">
                             <span class="cve-db-id">{{ object.id }}</span>
-                            <span class="cve-id">{{ object.cve_id }}</span>
+                            <span class="cve-id">{{ object.cve__cve_id }}</span>
                             <div class="cve-header-description-long">
                                 {{ object.title | default_to_na }}
                             </div>

@@ -177,11 +177,10 @@ class GroupedCVEPaginator(Paginator):
         self, sliced_ordered_ids: "ValuesQuerySet[Any, Any]"
     ) -> "ValuesQuerySet[Any, dict[str, Any]]":
         return (
-            self.ordered_object_list.values("id")
+            self.ordered_object_list.values("id", "cve_id", "cve__cve_id")
             .filter(id__in=sliced_ordered_ids)
             .annotate(
                 affected_count=Count("id"),
-                cve_id=Max("cve__cve_id"),
                 title=Max("title"),
                 description=Max("descriptions__value"),
                 affected_vendor=Max("affected__vendor"),
