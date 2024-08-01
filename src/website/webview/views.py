@@ -68,9 +68,16 @@ class NixpkgsIssueForm(forms.ModelForm):
 
 
 class GroupedPackagePaginator(Paginator):
+    def __init__(self, *args: Any, **kwargs: dict[str, Any]) -> None:
+        self.filtered = kwargs.pop("filtered")
+        super().__init__(*args, **kwargs)
+
     @cached_property
     def unique_names(self) -> "ValuesQuerySet[Any, dict[str, Any]]":
-        return NixDerivation.objects.values("name").distinct()
+        if self.filtered:
+            return self.ordered_object_list.values("name").distinct()
+        else:
+            return NixDerivation.objects.values("name").distinct()
 
     @cached_property
     def count(self) -> int:
@@ -126,13 +133,20 @@ class GroupedPackagePaginator(Paginator):
 
 
 class GroupedCVEPaginator(Paginator):
+    def __init__(self, *args: Any, **kwargs: dict[str, Any]) -> None:
+        self.filtered = kwargs.pop("filtered")
+        super().__init__(*args, **kwargs)
+
     # NOTE(alejandrosame): We might actually want to group on cve.cve_id instead of container.id.
     # In that case:
     #   - why would there be more thatn one container for the same cve.cve_id?
     #   - how to properly aggregate, for example, container.title?
     @cached_property
     def unique_cves(self) -> "ValuesQuerySet[Any, dict[str, Any]]":
-        return Container.objects.values("id").distinct()
+        if self.filtered:
+            return self.ordered_object_list.values("id").distinct()
+        else:
+            return Container.objects.values("id").distinct()
 
     @cached_property
     def count(self) -> int:
@@ -287,11 +301,19 @@ def triage_view(request: HttpRequest) -> HttpResponse:
         pkg_objects = pkg_qs.annotate(rank=Value(0.0), rank2=Value(0.0))
 
     # Paginators
-    cve_paginator = GroupedCVEPaginator(cve_objects, paginate_by)
+    cve_paginator = GroupedCVEPaginator(
+        cve_objects,
+        paginate_by,
+        filtered=search_cves is not None,  # type: ignore
+    )
     cve_page_number = request.GET.get("cve_page", 1)
     cve_page_objects = cve_paginator.get_page(cve_page_number)
 
-    pkg_paginator = GroupedPackagePaginator(pkg_objects, paginate_by)
+    pkg_paginator = GroupedPackagePaginator(
+        pkg_objects,
+        paginate_by,
+        filtered=search_pkgs is not None,  # type: ignore
+    )
     pkg_page_number = request.GET.get("pkg_page", 1)
     pkg_page_objects = pkg_paginator.get_page(pkg_page_number)
 
