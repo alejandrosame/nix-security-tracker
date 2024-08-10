@@ -6,6 +6,7 @@ from typing import Any
 if typing.TYPE_CHECKING:
     from django.db.models.query import ValuesQuerySet
 
+from django.contrib.auth.decorators import login_required
 from django.contrib.postgres.aggregates import ArrayAgg
 from django.contrib.postgres.search import (
     SearchQuery,
@@ -24,6 +25,7 @@ from django.db.models import (
 from django.db.models.manager import BaseManager
 from django.http import HttpRequest, HttpResponse, HttpResponseRedirect
 from django.shortcuts import get_object_or_404
+from django.utils.decorators import method_decorator
 from django.views.generic import DetailView, ListView, TemplateView
 from shared.models import (
     AffectedProduct,
@@ -41,6 +43,7 @@ class HomeView(TemplateView):
     template_name = "home_view.html"
 
 
+@method_decorator(login_required, name="dispatch")
 class TriageView(TemplateView):
     template_name = "triage_view.html"
     paginate_by = 10
