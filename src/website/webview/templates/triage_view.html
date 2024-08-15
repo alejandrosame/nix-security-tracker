@@ -380,13 +380,37 @@
 
 <script>
     {% comment %}
-        NOTE(alejandrosame): If we want to allow selecting packages and CVEs from different pages,
-        then we'll have to refactor to manage state with localstorage.
+    NOTE(alejandrosame): Although we are using localstorage for checkbox state,
+    there's no support yet to create issues by selecting entities from different pages.
+    This would require a bigger UI change to help the user keep track of the selection stack.
+    Otherwise, it would be too easy to make spurious issues.
     {% endcomment %}
-    // On refresh, set all checkboxes as unchecked
-    const allCheckboxes = document.querySelectorAll('input[type="checkbox"]')
-    allCheckboxes.forEach(function (checkbox) {
-        checkbox.checked = false;
+    // Utils:
+    saveCheckboxState = function(className, checkbox) {
+        const {value, checked} = checkbox;
+        localStorage.setItem(`${className}-${value}`, JSON.stringify(checked));
+    }
+    deleteCheckboxState = function(className) {
+        const classCheckboxes = document.querySelectorAll(`.${className}`);
+        const state = classCheckboxes.forEach((checkbox) => {
+            const {value} = checkbox;
+            localStorage.removeItem(`${className}-${value}`);
+        });
+    }
+    recoverCheckboxState = function(className) {
+        const classCheckboxes = document.querySelectorAll(`.${className}`);
+        const state = classCheckboxes.forEach((checkbox) => {
+            const {value} = checkbox;
+            const checked = JSON.parse(localStorage.getItem(`${className}-${value}`));
+            checkbox.checked = checked;
+        });
+    }
+
+    const cveCheckboxes = document.querySelectorAll('.cve-checkbox');
+    cveCheckboxes.forEach(function(checkbox) {
+        checkbox.addEventListener("change",  function(event) {
+            saveCheckboxState("cve-checkbox", checkbox);
+        });
     });
 
     // Add logic for each pkg entry
@@ -420,7 +444,6 @@
             } else {
                 parentCheckbox.checked = false;
             }
-
         });
 
         // Select/deselect all children when parent is selected/deselected
@@ -429,15 +452,19 @@
                 if (checkbox.checked != parentCheckbox.checked){
                     checkbox.checked = parentCheckbox.checked;
                     checkbox.dispatchEvent(changeNoParentTriggerEvent);
+                    saveCheckboxState("child-checkbox", checkbox);
                 }
             });
         });
 
         // On child checkbox change:
         //  - Trigger checkParentStatusEvent to keep parent checkbox in sync with children state
+        //  - Update localstorage state.
         childCheckboxes.forEach(function(checkbox) {
             checkbox.addEventListener("change",  function(event) {
                 parentCheckbox.dispatchEvent(checkParentStatusEvent);
+                {% comment %} FIXME: Not the most efficient, but UI will be reworked completely anyway {% endcomment %}
+                saveCheckboxState("child-checkbox", checkbox);
             });
         });
     });
@@ -462,10 +489,16 @@
     bindPageClick(cvePageNav, "cve_page")
     bindPageClick(pkgPageNav, "pkg_page")
 
-    // Keep existing search parameters when submitting form
-    const form = document.querySelector("form#search-form")
+    // Delete localstorage checkbox state when submitting issue form
+    const issueForm = document.querySelector("form#issue-form")
+    issueForm.addEventListener('submit', function(event) {
+        deleteCheckboxState("cve-checkbox");
+        deleteCheckboxState("child-checkbox");
+    });
 
-    form.addEventListener('submit', function(event) {
+    // Keep existing search parameters when submitting form
+    const searchForm = document.querySelector("form#search-form")
+    searchForm.addEventListener('submit', function(event) {
         event.preventDefault();
         const { action } = form;
         const url = new URL(action, window.location);
@@ -489,12 +522,17 @@
                 searchParams.delete(k);
             }
         }
+
         searchParams.sort();
         url.search = searchParams;
         window.location.href = url.toString();
     });
 
-    // Reset checkbox status in case of failed form
+    // On refresh, recover checkbox state
+    recoverCheckboxState("cve-checkbox");
+    recoverCheckboxState("child-checkbox");
+
+    // On failed form. reset checkbox state
     {% for id in form.cve.value %}
     document.querySelector('.cve-checkbox[data-id="{{id}}"]').click();
     {% endfor %}
