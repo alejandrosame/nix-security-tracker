@@ -305,6 +305,8 @@ class TriageView(TemplateView):
         return [_id for obj in pkg_objects for _id in obj["ids"]]  # type: ignore
 
     def get_context_data(self, **kwargs: Any) -> dict[str, Any]:
+        # FIXME: we always search for both CVEs and packages simultaneously if both queries are provided,
+        # even if one of them was already done and the query hasn't changed. this needs optimisation.
         context = super().get_context_data(**kwargs)
 
         search_cves = self.request.GET.get("search_cves")
