@@ -206,11 +206,11 @@
                 <ul>
                     {% for page_number in cve_paginator_range %}
                     <li class="index">
-                        {% if page_number == cve_list.paginator.ELLIPSIS %}
-                            {{cve_list.paginator.ELLIPSIS}}
+                        {% if page_number == cve_page.paginator.ELLIPSIS %}
+                            {{cve_page.paginator.ELLIPSIS}}
                         {% else %}
                             <a  href="{{request.path}}?cve_page={{page_number}}"
-                                class="{% if page_number == cve_list.number %}current{% endif %}"
+                                class="{% if page_number == cve_page.number %}current{% endif %}"
                                 data-id="{{page_number}}"
                             >
                                 {{page_number}}
@@ -222,7 +222,7 @@
             </nav>
         </div>
         <ul class="cves">
-            {% for object in cve_list %}
+            {% for object in cve_page %}
             <li class="cve-entry selectable-item" data-id="{{object.id}}">
                 <details>
                     <summary>
@@ -318,11 +318,11 @@
                 <ul>
                     {% for page_number in pkg_paginator_range %}
                     <li class="index">
-                        {% if page_number == pkg_list.paginator.ELLIPSIS %}
-                            {{pkg_list.paginator.ELLIPSIS}}
+                        {% if page_number == pkg_page.paginator.ELLIPSIS %}
+                            {{pkg_page.paginator.ELLIPSIS}}
                         {% else %}
                             <a  href="{{request.path}}?pkg_page={{page_number}}"
-                                class="{% if page_number == pkg_list.number %}current{% endif %}"
+                                class="{% if page_number == pkg_page.number %}current{% endif %}"
                                 data-id="{{page_number}}"
                             >
                                 {{page_number}}
@@ -334,7 +334,7 @@
             </nav>
         </div>
         <ul id="pkgs">
-            {% for object in pkg_list %}
+            {% for object in pkg_page %}
             <li class="pkg-entry selectable-item" data-id="{{forloop.counter0}}">
                 <details>
                     <summary>

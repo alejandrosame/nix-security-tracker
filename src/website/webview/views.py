@@ -317,8 +317,8 @@ class TriageView(TemplateView):
         cve_page, cve_paginator = self._get_cve_page(search_cves, cve_page_number)
         pkg_page, pkg_paginator = self._get_pkg_page(search_pkgs, pkg_page_number)
 
-        context["cve_list"] = cve_page
-        context["pkg_list"] = pkg_page
+        context["cve_page"] = cve_page
+        context["pkg_page"] = pkg_page
 
         context["cve_paginator_range"] = cve_paginator.get_elided_page_range(  # type: ignore
             cve_page_number,
@@ -341,8 +341,8 @@ class TriageView(TemplateView):
 
         # Init form
         context["form"] = NixpkgsIssueForm(
-            cve_ids=self._map_cve_ids(context["cve_list"].object_list),  # type: ignore
-            pkg_ids=self._map_pkg_ids(context["pkg_list"].object_list),  # type: ignore
+            cve_ids=self._map_cve_ids(context["cve_page"].object_list),  # type: ignore
+            pkg_ids=self._map_pkg_ids(context["pkg_page"].object_list),  # type: ignore
         )
 
         return self.render_to_response(context)
@@ -353,8 +353,8 @@ class TriageView(TemplateView):
         # Fill form to validate
         context["form"] = NixpkgsIssueForm(
             self.request.POST,
-            cve_ids=self._map_cve_ids(context["cve_list"].object_list),  # type: ignore
-            pkg_ids=self._map_pkg_ids(context["pkg_list"].object_list),  # type: ignore
+            cve_ids=self._map_cve_ids(context["cve_page"].object_list),  # type: ignore
+            pkg_ids=self._map_pkg_ids(context["pkg_page"].object_list),  # type: ignore
         )
 
         if context["form"].is_valid():
