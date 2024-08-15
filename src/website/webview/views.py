@@ -46,11 +46,18 @@ class HomeView(TemplateView):
 @method_decorator(login_required, name="dispatch")
 class TriageView(TemplateView):
     template_name = "triage_view.html"
+    # Pagination parameters
     paginate_by = 10
     pages_on_each_side = 2
     pages_on_ends = 1
 
     def _cve_efficient_filter(self, search_cves: str) -> BaseManager[Container]:
+        """
+        To efficiently count is best to filter all relevant m2m related fields
+        disregarding their order. Otherwise, the count and paginator will
+        force grouping (which is costly in this case) twice.
+        """
+
         container_from_description_matches = (
             Container.descriptions.through.objects.filter(
                 description__search_vector=search_cves
@@ -86,6 +93,8 @@ class TriageView(TemplateView):
     ) -> tuple["ValuesQuerySet[Container, dict[str, Any]]", Callable[[], int]]:
         if search_cves:
             search_query = SearchQuery(search_cves)
+            # Check https://www.postgresql.org/docs/current/textsearch-controls.html#TEXTSEARCH-RANKING
+            # for the meaning of normalization values.
             norm_value = Value(1)
             cve_qs = (
                 Container.objects.prefetch_related(
@@ -168,9 +177,6 @@ class TriageView(TemplateView):
                 )
             )
 
-            # To efficiently count is best to filter all relevant m2m related fields
-            # disregarding their order. Otherwise, the count will and paginator will
-            # force grouping (which is costly in this case) twice.
             cve_count_function = self._cve_efficient_filter(
                 search_cves=search_cves
             ).count
