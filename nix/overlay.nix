@@ -54,6 +54,8 @@ in
       daphne
       channels
       aiofiles
+      django-pghistory
+      django-pgtrigger
     ];
 
     postInstall = ''

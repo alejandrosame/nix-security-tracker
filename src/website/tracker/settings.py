@@ -159,6 +159,8 @@ INSTALLED_APPS = [
     "channels",
     "pgpubsub",
     "pgtrigger",
+    "pghistory",
+    "pghistory.admin",
     "rest_framework",
     "shared",
     "webview",
@@ -175,6 +177,7 @@ MIDDLEWARE = [
     "debug_toolbar.middleware.DebugToolbarMiddleware",
     # Allauth account middleware
     "allauth.account.middleware.AccountMiddleware",
+    "pghistory.middleware.HistoryMiddleware",
 ]
 
 ROOT_URLCONF = "tracker.urls"
@@ -290,6 +293,9 @@ DB_SECURITY_TEAM = "security_team"
 GH_WEBHOOK_SECRET = get_secret("GH_WEBHOOK_SECRET")
 
 TEST_RUNNER = "tracker.test_runner.CustomTestRunner"
+# Make history log immutable by default
+PGHISTORY_APPEND_ONLY = True
+PGHISTORY_ADMIN_MODEL = "pghistory.MiddlewareEvents"
 
 # Customization via user settings
 # This must be at the end, as it must be able to override the above

@@ -2,6 +2,7 @@ from typing import Any
 
 from django.contrib.postgres.indexes import BTreeIndex, GinIndex
 from django.contrib.postgres.search import SearchVectorField
+import pghistory
 from django.core.validators import RegexValidator
 from django.db import models
 from django.db.models.signals import post_save
@@ -383,6 +384,11 @@ class IssueStatus(models.TextChoices):
     WONTFIX = "W", _("wontfix")
 
 
+# `cve` and `derivations` fields have to be tracked with via their `trough` models
+@pghistory.track(
+    model_name="NixpkgsIssueLog",
+    fields=["status"],
+)
 class NixpkgsIssue(models.Model):
     """The Nixpkgs version of a cve."""
 
@@ -424,6 +430,28 @@ def generate_code(
         ).count()
         instance.code = f"NIXPKGS-{str(instance.created.year)}-{str(number).zfill(4)}"
         instance.save()
+
+
+# Tracking many-to-many cve relationship of NixpkgsIssue
+@pghistory.track(
+    pghistory.InsertEvent("cve.add"),
+    pghistory.DeleteEvent("cve.remove"),
+    model_name="NixpkgsIssueCveLog",
+)
+class NixpkgsIssueCve(NixpkgsIssue.cve.through):
+    class Meta:
+        proxy = True
+
+
+# Tracking many-to-many derivations relationship of NixpkgsIssue
+@pghistory.track(
+    pghistory.InsertEvent("derivations.add"),
+    pghistory.DeleteEvent("derivations.remove"),
+    model_name="NixpkgsIssueDerivationsLog",
+)
+class NixpkgsIssueDerivation(NixpkgsIssue.derivations.through):
+    class Meta:
+        proxy = True
 
 
 class NixpkgsEvent(models.Model):
