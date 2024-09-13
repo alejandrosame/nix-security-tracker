@@ -12,7 +12,7 @@ from shared.models import (
     Container,
     NixDerivationMeta,
     NixpkgsIssue,
-    NixpkgsIssueLogView,  # type: ignore
+    NixpkgsIssueAggregatedLog,  # type: ignore
 )
 
 
@@ -138,11 +138,11 @@ class NixpkgsIssueAdmin(AutocompleteMixin, admin.ModelAdmin):
     readonly_fields = ["code"]
 
 
-@admin.register(NixpkgsIssueLogView)
+@admin.register(NixpkgsIssueAggregatedLog)
 class NixpkgsIssuesLogViewAdmin(EventModelAdmin):
     list_display = ["id", "timestamp", "user_link", "entry_link", "changes"]
 
-    def user_link(self, obj: NixpkgsIssueLogView) -> str:
+    def user_link(self, obj: NixpkgsIssueAggregatedLog) -> str:
         return mark_safe(
             f'<a href="../../auth/user/{obj.entry_id}">{obj.entry}</a>'  # type: ignore
         )
@@ -150,7 +150,7 @@ class NixpkgsIssuesLogViewAdmin(EventModelAdmin):
     user_link.short_description = "user"
     user_link.admin_order_field = "user_id"
 
-    def entry_link(self, obj: NixpkgsIssueLogView) -> str:
+    def entry_link(self, obj: NixpkgsIssueAggregatedLog) -> str:
         return mark_safe(
             f'<a href="../../shared/nixpkgsissue/{obj.entry_id}">{obj.entry}</a>'  # type: ignore
         )

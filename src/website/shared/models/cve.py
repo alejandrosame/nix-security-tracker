@@ -1,7 +1,5 @@
 from typing import Any
 
-import pghistory
-from django.contrib.auth.models import User
 from django.contrib.postgres.indexes import BTreeIndex, GinIndex
 from django.contrib.postgres.search import SearchVectorField
 from django.core.validators import RegexValidator
@@ -9,7 +7,6 @@ from django.db import models
 from django.db.models.signals import post_save
 from django.dispatch import receiver
 from django.utils.translation import gettext_lazy as _
-from pghistory.models import Context
 from pgtrigger import UpdateSearchVector
 
 from .nix_evaluation import NixDerivation
@@ -386,11 +383,6 @@ class IssueStatus(models.TextChoices):
     WONTFIX = "W", _("wontfix")
 
 
-# `cve` and `derivations` fields have to be tracked with via their `through` models
-@pghistory.track(
-    model_name="NixpkgsIssueLog",
-    fields=["status"],
-)
 class NixpkgsIssue(models.Model):
     """The Nixpkgs version of a cve."""
 
@@ -432,52 +424,6 @@ def generate_code(
         ).count()
         instance.code = f"NIXPKGS-{str(instance.created.year)}-{str(number).zfill(4)}"
         instance.save()
-
-
-# Tracking many-to-many cve relationship of NixpkgsIssue
-@pghistory.track(
-    pghistory.InsertEvent("cve.add"),
-    pghistory.DeleteEvent("cve.remove"),
-    model_name="NixpkgsIssueCveLog",
-)
-class NixpkgsIssueCve(NixpkgsIssue.cve.through):
-    class Meta:
-        proxy = True
-
-
-# Tracking many-to-many derivations relationship of NixpkgsIssue
-@pghistory.track(
-    pghistory.InsertEvent("derivations.add"),
-    pghistory.DeleteEvent("derivations.remove"),
-    model_name="NixpkgsIssueDerivationsLog",
-)
-class NixpkgsIssueDerivation(NixpkgsIssue.derivations.through):
-    class Meta:
-        proxy = True
-
-
-# The activity log view model maps to a Postgresql VIEW table (created via
-# migrations RunSQL). Django doesn't support multimodel proxy models, which
-# would make the equivalent of database view table via ORM.
-class NixpkgsIssueLogView(models.Model):
-    class Meta:
-        managed = False
-        db_table = "log_nixpkgsissue"
-        app_label = "pghistory"
-
-    id = models.BigIntegerField(primary_key=True)
-    context = models.ForeignKey(
-        Context, db_column="context_id", to_field="id", on_delete=models.DO_NOTHING
-    )
-    timestamp = models.DateTimeField(null=True, default=None)
-    user = models.ForeignKey(
-        User, db_column="user_id", to_field="id", on_delete=models.DO_NOTHING
-    )
-    table = models.CharField(max_length=256)
-    entry = models.ForeignKey(
-        NixpkgsIssue, db_column="entry_id", to_field="id", on_delete=models.DO_NOTHING
-    )
-    changes = models.JSONField()
 
 
 class NixpkgsEvent(models.Model):
