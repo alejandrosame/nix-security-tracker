@@ -1,5 +1,6 @@
 from typing import Any
 
+import pghistory
 from django.contrib.postgres.indexes import BTreeIndex, GinIndex
 from django.contrib.postgres.search import SearchVectorField
 from django.core.validators import RegexValidator
@@ -479,6 +480,7 @@ class IssueStatus(models.TextChoices):
     WONTFIX = "W", _("wontfix")
 
 
+@pghistory.track(fields=["status"])
 class NixpkgsIssue(models.Model):
     """The Nixpkgs version of a cve."""
 
@@ -520,6 +522,17 @@ def generate_code(
         ).count()
         instance.code = f"NIXPKGS-{str(instance.created.year)}-{str(number).zfill(4)}"
         instance.save()
+
+# NixpkgsIssue `cve` and `derivations` changes have to be tracked via proxy of their `through` models.
+@pghistory.track(pghistory.InsertEvent("cve.add"), pghistory.DeleteEvent("cve.remove"))
+class NixpkgsIssueCveThroughProxy(NixpkgsIssue.cve.through):
+    class Meta:
+        proxy = True
+
+@pghistory.track(pghistory.InsertEvent("derivations.add"), pghistory.DeleteEvent("derivations.remove"))
+class NixpkgsIssueDerivationsThroughProxy(NixpkgsIssue.derivations.through):
+    class Meta:
+        proxy = True
 
 
 class NixpkgsEvent(models.Model):
