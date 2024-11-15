@@ -33,6 +33,7 @@ rec {
       let
         pythonExcludes = [
           "/migrations/" # auto-generated code
+          "/management/commands/activity_log" # just a fast exploration file
         ];
       in
       {

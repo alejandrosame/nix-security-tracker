@@ -523,13 +523,18 @@ def generate_code(
         instance.code = f"NIXPKGS-{str(instance.created.year)}-{str(number).zfill(4)}"
         instance.save()
 
+
 # NixpkgsIssue `cve` and `derivations` changes have to be tracked via proxy of their `through` models.
 @pghistory.track(pghistory.InsertEvent("cve.add"), pghistory.DeleteEvent("cve.remove"))
 class NixpkgsIssueCveThroughProxy(NixpkgsIssue.cve.through):
     class Meta:
         proxy = True
 
-@pghistory.track(pghistory.InsertEvent("derivations.add"), pghistory.DeleteEvent("derivations.remove"))
+
+@pghistory.track(
+    pghistory.InsertEvent("derivations.add"),
+    pghistory.DeleteEvent("derivations.remove"),
+)
 class NixpkgsIssueDerivationsThroughProxy(NixpkgsIssue.derivations.through):
     class Meta:
         proxy = True
