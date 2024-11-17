@@ -22,16 +22,7 @@ These automatic suggestions were dimissed after initial triaging. <a href="/sugg
 
       <h2>{{ object.package_name }}</h2>
 
-      <details class="activity_log">
-        <summary>
-           Activity log        
-        </summary>
-        <p class="description-long as-details">
-          {% for log_entry in object.activity_log %}
-            {{ log_entry }}</br>
-          {% endfor %}
-        </p>
-      </details>
+      {% suggestion_activity_log object.activity_log %}
 
       <details class="description">
         <summary>

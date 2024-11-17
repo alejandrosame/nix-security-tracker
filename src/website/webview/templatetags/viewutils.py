@@ -31,6 +31,10 @@ class PackageListContext(TypedDict):
     packages: PackageList
 
 
+class SuggestionActivityLog(TypedDict):
+    activity_log: list[str]
+
+
 @register.filter
 def getitem(dictionary: dict, key: str) -> Any | None:
     return dictionary.get(key)
@@ -100,3 +104,8 @@ def nixpkgs_package_list(packages: PackageList) -> PackageListContext:
         {% package_list package_dict %}
     """
     return {"packages": packages}
+
+
+@register.inclusion_tag("components/suggestion_activity_log.html")
+def suggestion_activity_log(activity_log: list[str]) -> SuggestionActivityLog:
+    return {"activity_log": activity_log}
