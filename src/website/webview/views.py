@@ -35,7 +35,7 @@ from django.shortcuts import get_object_or_404, redirect
 from django.utils.decorators import method_decorator
 from django.views.generic import DetailView, ListView, TemplateView
 from shared.logs import (
-    get_suggestion_activity_log,
+    SuggestionActivityLog,
 )
 from shared.models import (
     AffectedProduct,
@@ -497,7 +497,9 @@ class SuggestionListView(ListView):
 
         for obj in context["object_list"]:
             obj.packages = channel_structure(obj.derivations.all())
-            obj.activity_log = get_suggestion_activity_log(obj)
+            obj.activity_log = SuggestionActivityLog(
+                suggestion=obj
+            ).get_structured_log()
 
         context["adjusted_elided_page_range"] = context[
             "paginator"
@@ -552,7 +554,9 @@ class DismissedListView(ListView):
 
         for obj in context["object_list"]:
             obj.packages = channel_structure(obj.derivations.all())
-            obj.activity_log = get_suggestion_activity_log(obj)
+            obj.activity_log = SuggestionActivityLog(
+                suggestion=obj
+            ).get_structured_log()
 
         context["adjusted_elided_page_range"] = context[
             "paginator"
@@ -602,7 +606,9 @@ class DraftListView(ListView):
 
         for obj in context["object_list"]:
             obj.packages = channel_structure(obj.derivations.all())
-            obj.activity_log = get_suggestion_activity_log(obj)
+            obj.activity_log = SuggestionActivityLog(
+                suggestion=obj
+            ).get_structured_log()
 
         context["adjusted_elided_page_range"] = context[
             "paginator"

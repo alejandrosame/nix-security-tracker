@@ -3,8 +3,33 @@
     Activity log
   </summary>
   <ul>
-    {% for log_entry in activity_log %}
-      <li>{{ log_entry }}</li>
+    <li>
+      Created <strong>automatic suggestion</strong>
+      {{ activity_log.created_at }}
+    </li>
+    {% for log_entry in activity_log.updates %}
+      <li>
+        @<strong>{{ log_entry.user }}</strong>
+        {% if "derivations." in log_entry.action %}
+          {# Package update entries #}
+          {% if ".add" in log_entry.action %}
+            added
+          {% else %}
+            removed
+          {% endif %}
+          package {{ log_entry.object }}
+        {% else %}
+          {# Status update entries #}
+          {% if "accepted" in log_entry.action  %}
+            selected
+          {% elif "rejected" in log_entry.action %}
+            dismissed
+          {% else %}
+            {{ log_entry.action }}
+          {% endif %}
+        {% endif %}
+        {{ log_entry.timestamp }}
+      </li>
     {% endfor %}
   </ul>
 </details>
