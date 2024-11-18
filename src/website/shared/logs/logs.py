@@ -76,4 +76,6 @@ class SuggestionActivityLog:
 
             log["updates"].append(update_entry)
 
+        log["updates"] = sorted(log["updates"], key=lambda x: x["timestamp"])
+
         return log
