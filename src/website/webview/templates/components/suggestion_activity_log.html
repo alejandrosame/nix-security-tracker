@@ -4,7 +4,10 @@
   </summary>
   <ul>
     <li>
-      Created <strong>automatic suggestion</strong>
+      Created <span class="automatic-suggestion"
+                      {# TODELETE: style once color is applied through class #}
+                      style="font-weight:bold;color:royalblue"
+              >automatic suggestion</span>
       {{ activity_log.created_at }}
     </li>
     {% for log_entry in activity_log.updates %}
@@ -17,13 +20,19 @@
           {% else %}
             removed
           {% endif %}
-          package {{ log_entry.object }}
+          package <strong>{{ log_entry.object }}</strong>
         {% else %}
           {# Status update entries #}
           {% if "accepted" in log_entry.action  %}
-            selected
+            <span class="suggestion-status-selected"
+                  {# TODELETE: style once color is applied through class #}
+                  style="font-weight:bold;color:limegreen"
+            >selected</span>
           {% elif "rejected" in log_entry.action %}
-            dismissed
+            <span class="suggestion-status-dismissed"
+                  {# TODELETE: style once color is applied through class #}
+                  style="font-weight:bold;color:darkgreen"
+            >dismissed</span>
           {% else %}
             {{ log_entry.action }}
           {% endif %}
