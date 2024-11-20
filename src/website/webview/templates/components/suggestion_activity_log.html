@@ -8,7 +8,11 @@
                       {# TODELETE: style once color is applied through class #}
                       style="font-weight:bold;color:royalblue"
               >automatic suggestion</span>
-      {{ activity_log.created_at }}
+      {% if activity_log.created_at is None %}
+        before activity logging was enabled.
+      {% else %}
+        {{ activity_log.created_at }}
+      {% endif %}
     </li>
     {% for timestamp, log_entries in activity_log.updates.items %}
     {% for log_entry in log_entries %}

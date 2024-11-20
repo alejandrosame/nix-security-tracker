@@ -1,6 +1,8 @@
 from collections import OrderedDict
 from typing import Any
 
+from django.core.exceptions import ObjectDoesNotExist
+
 from shared.models import (
     CVEDerivationClusterProposalStatusEvent,  # type: ignore
     DerivationClusterProposalLinkEvent,  # type: ignore
@@ -44,19 +46,20 @@ class SuggestionActivityLog:
     """
 
     def __init__(self, suggestion: CVEDerivationClusterProposal) -> None:
-        link_creation_timestamp = (
-            CVEDerivationClusterProposalStatusEvent.objects.filter(
-                pgh_obj_id=suggestion.pk
-            )[0].pgh_created_at
-        )
-
         self.log = {}
         self.log["updates"] = {}
 
         # Suggestion creation timestamp
-        self.log["created_at"] = CVEDerivationClusterProposalStatusEvent.objects.get(
-            pgh_obj_id=suggestion.pk, pgh_label="insert"
-        ).pgh_created_at
+        try:
+            self.log["created_at"] = (
+                CVEDerivationClusterProposalStatusEvent.objects.get(
+                    pgh_obj_id=suggestion.pk, pgh_label="insert"
+                ).pgh_created_at
+            )
+        except ObjectDoesNotExist:
+            # In this case, the propsal was inserted before pghistory migrations were
+            # deployedj.
+            self.log["created_at"] = None
 
         # Suggestion status updates
         for event in (
@@ -85,16 +88,24 @@ class SuggestionActivityLog:
         # Suggestion package updates (additions and removals)
         # First pass groups derivations by name (packages)
         log_first_pass_packages = {}
-        for event in (
-            DerivationClusterProposalLinkEvent.objects.prefetch_related(
-                "pgh_context", "derivation"
-            )
-            .filter(proposal_id=suggestion.pk)
-            .exclude(
-                # Ignore values at insertion time
-                pgh_created_at=link_creation_timestamp
-            )
-        ):
+        query = DerivationClusterProposalLinkEvent.objects.prefetch_related(
+            "pgh_context", "derivation"
+        ).filter(proposal_id=suggestion.pk)
+        if self.log["created_at"] is not None:
+            try:
+                link_event = DerivationClusterProposalLinkEvent.objects.filter(
+                    proposal_id=suggestion.pk
+                ).first()
+                if link_event is not None:
+                    link_creation_timestamp = link_event.pgh_created_at
+                    query = query.exclude(
+                        # Ignore values at insertion time
+                        pgh_created_at=link_creation_timestamp
+                    )
+            except ObjectDoesNotExist:
+                None  # Nothing to filter
+
+        for event in query:
             user = get_user_from_context(event.pgh_context)
             key = (event.pgh_created_at, event.pgh_label, user)
             log_first_pass_packages = self._upsert_dict(
