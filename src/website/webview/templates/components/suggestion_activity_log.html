@@ -2,7 +2,7 @@
   <summary>
     Activity log
   </summary>
-  <ul>
+  <ul style="list-style: none">
     <li>
       Created <span class="automatic-suggestion"
                       {# TODELETE: style once color is applied through class #}
@@ -16,19 +16,31 @@
     </li>
     {% for timestamp, log_entries in activity_log.updates.items %}
     {% for log_entry in log_entries %}
-      <li>
+      <li style="display: flex;align-items: flex-start;gap: 0.3em;">
         @<strong>{{ log_entry.user }}</strong>
         {% if "derivations." in log_entry.action %}
         {# Package update entries #}
-          {% for packagename, derivations in log_entry.target.items %}
-            {# Leave derivation list ready when displaying more details #}
-            {% if ".add" in log_entry.action %}
-              added
-            {% else %}
-              removed
-            {% endif %}
-            package <strong>{{ packagename }}</strong>
-          {% endfor %}
+          {% if ".add" in log_entry.action %}
+            added
+          {% else %}
+            removed
+          {% endif %}
+          {% if log_entry.target.items|length_is:1 %}
+            {% for packagename, derivations in log_entry.target.items %}
+              package <strong>{{ packagename }}</strong>
+            {% endfor %}
+          {% else %}
+            <details class="package-summary" style="display:inline">
+              <summary style="list-style-type: none; cursor: pointer; text-decoration: underline;">
+                {{ log_entry.target.items|length }} packages
+              </summary>
+              <ul style="padding-left:1.5em">
+                {% for packagename, derivations in log_entry.target.items %}
+                  <li>{{ packagename }}</li>
+                {% endfor %}
+              </ul>
+            </details>
+          {% endif %}
         {% else %}
           {# Status update entries #}
           {% if "accepted" in log_entry.target  %}
