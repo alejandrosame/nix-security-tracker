@@ -1,4 +1,5 @@
 import datetime
+from collections import OrderedDict
 from typing import Any, TypedDict
 
 from django import template
@@ -52,6 +53,17 @@ def getdrvname(drv: dict) -> str:
 @register.filter
 def iso(date: datetime.datetime) -> str:
     return date.replace(microsecond=0).isoformat()
+
+
+@register.filter
+def last_key(od: OrderedDict) -> Any:
+    return next(reversed(od))
+
+
+@register.filter
+def last_user(od: OrderedDict) -> str:
+    _, entry = next(reversed(od.items()))
+    return entry[0]["user"]
 
 
 @register.simple_tag

@@ -18,11 +18,10 @@ These automatic suggestions were dimissed after initial triaging. <a href="/sugg
           {{ object.cve.cve_id }}
         </a>
         {% severity_badge object.base_severity %}
+        {% suggestion_activity_log object.activity_log object.pk %}
       </div>
 
       <h2>{{ object.package_name }}</h2>
-
-      {% suggestion_activity_log object.activity_log object.pk %}
 
       <details class="description">
         <summary>
