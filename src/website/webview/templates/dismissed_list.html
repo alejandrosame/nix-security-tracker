@@ -22,7 +22,7 @@ These automatic suggestions were dimissed after initial triaging. <a href="/sugg
 
       <h2>{{ object.package_name }}</h2>
 
-      {% suggestion_activity_log object.activity_log %}
+      {% suggestion_activity_log object.activity_log object.pk %}
 
       <details class="description">
         <summary>

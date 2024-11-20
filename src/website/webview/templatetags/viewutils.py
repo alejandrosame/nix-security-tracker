@@ -1,3 +1,4 @@
+import datetime
 from typing import Any, TypedDict
 
 from django import template
@@ -32,7 +33,8 @@ class PackageListContext(TypedDict):
 
 
 class SuggestionActivityLog(TypedDict):
-    activity_log: list[str]
+    activity_log: dict
+    suggestion_id: int
 
 
 @register.filter
@@ -45,6 +47,11 @@ def getdrvname(drv: dict) -> str:
     hash = drv["drv_path"].split("-")[0].split("/")[-1]
     name = drv["drv_name"]
     return f"{name} {hash[:8]}"
+
+
+@register.filter
+def iso(date: datetime.datetime) -> str:
+    return date.replace(microsecond=0).isoformat()
 
 
 @register.simple_tag
@@ -107,5 +114,7 @@ def nixpkgs_package_list(packages: PackageList) -> PackageListContext:
 
 
 @register.inclusion_tag("components/suggestion_activity_log.html")
-def suggestion_activity_log(activity_log: list[str]) -> SuggestionActivityLog:
-    return {"activity_log": activity_log}
+def suggestion_activity_log(
+    activity_log: dict, suggestion_id: int
+) -> SuggestionActivityLog:
+    return {"activity_log": activity_log, "suggestion_id": suggestion_id}

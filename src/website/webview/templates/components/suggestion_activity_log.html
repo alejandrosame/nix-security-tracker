@@ -1,12 +1,18 @@
-<details class="activity_log">
+{% load humanize %}
+{% load viewutils %}
+
+<details class="activity-log"
+         id="suggestion-activity-log-{{suggestion_id}}"
+         data-relative=true
+>
   <summary>
     Activity log
   </summary>
   <ul style="list-style: none">
     <li>
       Created <span class="automatic-suggestion"
-                      {# TODELETE: style once color is applied through class #}
-                      style="font-weight:bold;color:royalblue"
+                    {# TODELETE: style once color is applied through class #}
+                    style="font-weight:bold;color:royalblue"
               >automatic suggestion</span>
       {% if activity_log.created_at is None %}
         before activity logging was enabled.
@@ -57,9 +63,41 @@
             {{ log_entry.action }}
           {% endif %}
         {% endif %}
-        {{ timestamp }}
+        <span class="activity-log-entry-timestamp"
+              data-timestamp-relative="{{ timestamp|naturaltime }}"
+              data-timestamp-iso="{{ timestamp|iso }}"
+        >
+          {{ timestamp|naturaltime }}
+        </span>
       </li>
     {% endfor %}
     {% endfor %}
   </ul>
+  <script>
+    {% comment %}
+      NOTE(alejandrosame): This will be called several times, but I'd rather keep this logic
+        contained in this file until the project settles on a frontend framework.
+    {% endcomment %}
+
+    var log = document.querySelector('#suggestion-activity-log-{{suggestion_id}}');
+    log.querySelectorAll('.activity-log-entry-timestamp').forEach((timestamp) => {
+      const changeTimestampPresentation = log_id => {
+        const log = document.querySelector(log_id);
+
+        log.dataset.relative = !(log.dataset.relative === "true")
+
+        log.querySelectorAll('.activity-log-entry-timestamp').forEach((timestamp) => {
+          if (log.dataset.relative === "true"){
+            timestamp.textContent = timestamp.dataset.timestampRelative;
+          } else {
+            timestamp.textContent = timestamp.dataset.timestampIso;
+          }
+        });
+      };
+
+      timestamp.onclick = function() {
+        changeTimestampPresentation('#suggestion-activity-log-{{suggestion_id}}');
+      };
+    });
+  </script>
 </details>
