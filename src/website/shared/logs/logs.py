@@ -63,6 +63,8 @@ class SuggestionActivityLog:
                 # Ignore the insertion case
                 pgh_label="insert",
             )
+            .all()
+            .iterator()
         ):
             entry = {}
 
@@ -102,6 +104,8 @@ class SuggestionActivityLog:
                 # Ignore values at insertion time
                 pgh_created_at=insertion_timestamp
             )
+            .all()
+            .iterator()
         ):
             user = get_user_from_context(event.pgh_context)
             key = (event.pgh_created_at, event.pgh_label, user)
