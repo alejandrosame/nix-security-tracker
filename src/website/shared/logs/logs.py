@@ -1,6 +1,18 @@
 from collections import OrderedDict
 from typing import Any
 
+from django.contrib.auth.models import User
+from django.db.models import (
+    BigIntegerField,
+    Case,
+    OuterRef,
+    Q,
+    Subquery,
+    Value,
+    When,
+)
+from django.db.models.functions import Cast, Coalesce
+
 from shared.models import (
     CVEDerivationClusterProposalStatusEvent,  # type: ignore
     DerivationClusterProposalLinkEvent,  # type: ignore
@@ -8,8 +20,6 @@ from shared.models import (
 from shared.models.linkage import (
     CVEDerivationClusterProposal,
 )
-
-from .utils import get_user_from_context
 
 
 class SuggestionActivityLog:
@@ -53,22 +63,24 @@ class SuggestionActivityLog:
 
         # Suggestion status updates
         for event in (
-            CVEDerivationClusterProposalStatusEvent.objects.prefetch_related(
-                "pgh_context",
-            )
-            .filter(
-                pgh_obj_id=suggestion.pk,
-            )
-            .exclude(
-                # Ignore the insertion case
-                pgh_label="insert",
+            self._annotate_username(
+                CVEDerivationClusterProposalStatusEvent.objects.prefetch_related(
+                    "pgh_context",
+                )
+                .filter(
+                    pgh_obj_id=suggestion.pk,
+                )
+                .exclude(
+                    # Ignore the insertion case
+                    pgh_label="insert",
+                )
             )
             .all()
             .iterator()
         ):
             entry = {}
 
-            entry["user"] = get_user_from_context(event.pgh_context)
+            entry["user"] = event.username
             entry["action"] = event.pgh_label
             entry["field"] = "status"
             entry["target"] = event.status
@@ -96,18 +108,20 @@ class SuggestionActivityLog:
         # First pass groups derivations by name (packages)
         log_first_pass_packages = {}
         for event in (
-            DerivationClusterProposalLinkEvent.objects.prefetch_related(
-                "pgh_context", "derivation"
-            )
-            .filter(proposal_id=suggestion.pk)
-            .exclude(
-                # Ignore values at insertion time
-                pgh_created_at=insertion_timestamp
+            self._annotate_username(
+                DerivationClusterProposalLinkEvent.objects.prefetch_related(
+                    "pgh_context", "derivation"
+                )
+                .filter(proposal_id=suggestion.pk)
+                .exclude(
+                    # Ignore values at insertion time
+                    pgh_created_at=insertion_timestamp
+                )
             )
             .all()
             .iterator()
         ):
-            user = get_user_from_context(event.pgh_context)
+            user = event.username
             key = (event.pgh_created_at, event.pgh_label, user)
             log_first_pass_packages = self._upsert_dict(
                 log_first_pass_packages, key, event.derivation
@@ -150,6 +164,35 @@ class SuggestionActivityLog:
             packages = self._upsert_dict(packages, derivation.name, derivation)
 
         return packages
+
+    def _annotate_username(self, query: Any) -> Any:
+        return query.annotate(
+            username=Coalesce(
+                Case(
+                    # An empty context means that the action took place
+                    # from a management command executed by a superadmin.
+                    When(Q(pgh_context__isnull=True), then=Value("ADMIN")),
+                    # NOTE(alejandrosame): These operations shouldn't be anonymous,
+                    # but leaving this case explicitly tagged as anonymous user to avoid
+                    # confusion with DELETED users.
+                    When(
+                        Q(pgh_context__metadata__contains={"user": None}),
+                        then=Value("ANONYMOUS"),
+                    ),
+                    default=Subquery(
+                        User.objects.filter(
+                            id=Cast(
+                                OuterRef("pgh_context__metadata__user"),
+                                BigIntegerField(),
+                            )
+                        ).values("username")[:1]
+                    ),
+                ),
+                # If user doesn't exist, we assume they were deleted
+                # from the database at their request.
+                Value("REDACTED"),
+            )
+        )
 
     def get_structured_log(self) -> dict:
         return self.log
