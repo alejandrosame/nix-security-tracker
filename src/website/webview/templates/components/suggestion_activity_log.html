@@ -1,9 +1,9 @@
 {% load humanize %}
 {% load viewutils %}
 
-{% if not activity_log.updates|length_is:0 %}
+{% if not suggestion.activity_log.updates|length_is:0 %}
 <details class="activity-log"
-         id="suggestion-activity-log-{{suggestion_id}}"
+         id="suggestion-activity-log-{{suggestion.id}}"
          data-relative=true
          style="background-color: gainsboro;margin-left: 1em; padding: 0.2em"
 >
@@ -12,9 +12,9 @@
   >
     <span class="title-when-closed">
       <span style="font-style: italic">
-        updated {{ activity_log.updates|last_key|naturaltime }}
+        updated {{ suggestion.activity_log.updates|last_key|naturaltime }}
       </span>
-      by <strong>@{{ activity_log.updates|last_user }}</strong>
+      by <strong>@{{ suggestion.activity_log.updates|last_user }}</strong>
     </span>
     <strong class="title-when-opened" style='display: none'>Activity log</strong>
   </summary>
@@ -24,13 +24,15 @@
                     {# TODELETE: style once color is applied through class #}
                     style="font-weight:bold;color:royalblue"
               >automatic suggestion</span>
-      {% if activity_log.created_at is None %}
-        before activity logging was enabled.
-      {% else %}
-        {{ activity_log.created_at }}
-      {% endif %}
+      <span class="activity-log-entry-timestamp"
+            data-timestamp-relative="{{ suggestion.created_at|naturaltime }}"
+            data-timestamp-iso="{{ suggestion.created_at|iso }}"
+            style="font-style: italic"
+      >
+        {{ suggestion.created_at|naturaltime }}
+      </span>
     </li>
-    {% for timestamp, log_entries in activity_log.updates.items %}
+    {% for timestamp, log_entries in suggestion.activity_log.updates.items %}
     {% for log_entry in log_entries %}
       <li style="display: flex;justify-content: flex-end;gap: 0.3em;">
         <strong>@{{ log_entry.user }}</strong>
@@ -120,7 +122,9 @@
     }
 
 
-    var log = document.querySelector('#suggestion-activity-log-{{suggestion_id}}');
+    var log = document.querySelector('#suggestion-activity-log-{{suggestion.id}}');
+
+    var created_or_updated_timestamp = log.querySelector
 
     log.addEventListener('toggle', function(event) {
       const classClosedTitle = ".title-when-closed";
@@ -154,13 +158,21 @@
       };
 
       timestamp.onclick = function() {
-        changeTimestampPresentation('#suggestion-activity-log-{{suggestion_id}}');
+        changeTimestampPresentation('#suggestion-activity-log-{{suggestion.id}}');
       };
     });
   </script>
 </details>
 {% else %}
-<span style="font-style: italic;background-color: gainsboro;margin-left: 1em; padding: 0.2em">
-  created {{ activity_log.created_at|naturaltime }}
+<span style="font-style: italic;background-color: gainsboro;margin-left: 1em; padding: 0.2em"
+      data-timestamp-relative="created {{ suggestion.created_at|naturaltime }}"
+      data-timestamp-iso="created {{ suggestion.created_at|iso }}"
+      onclick="if (event.target.textContent === event.target.dataset.timestampRelative){
+        event.target.textContent = event.target.dataset.timestampIso;
+      } else {
+        event.target.textContent = event.target.dataset.timestampRelative;
+      }"
+>
+  created {{ suggestion.created_at|naturaltime }}
 </span>
 {% endif%}

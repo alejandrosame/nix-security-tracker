@@ -22,7 +22,7 @@
             {{ object.cve.cve_id }}
           </a>
           {% severity_badge object.base_severity %}
-          {% suggestion_activity_log object.activity_log object.pk %}
+          {% suggestion_activity_log object %}
         </div>
 
         <h2>{{ object.package_name }}</h2>

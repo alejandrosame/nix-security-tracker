@@ -6,6 +6,9 @@ from django import template
 from django.utils.html import format_html
 from django.utils.safestring import SafeString
 from shared.models.cve import Severity
+from shared.models.linkage import (
+    CVEDerivationClusterProposal,
+)
 
 register = template.Library()
 
@@ -34,8 +37,7 @@ class PackageListContext(TypedDict):
 
 
 class SuggestionActivityLog(TypedDict):
-    activity_log: dict
-    suggestion_id: int
+    suggestion: CVEDerivationClusterProposal
 
 
 @register.filter
@@ -127,6 +129,6 @@ def nixpkgs_package_list(packages: PackageList) -> PackageListContext:
 
 @register.inclusion_tag("components/suggestion_activity_log.html")
 def suggestion_activity_log(
-    activity_log: dict, suggestion_id: int
+    suggestion: CVEDerivationClusterProposal,
 ) -> SuggestionActivityLog:
-    return {"activity_log": activity_log, "suggestion_id": suggestion_id}
+    return {"suggestion": suggestion}
