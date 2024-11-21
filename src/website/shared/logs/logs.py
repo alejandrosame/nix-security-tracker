@@ -12,6 +12,7 @@ from django.db.models import (
     When,
 )
 from django.db.models.functions import Cast, Coalesce
+from pghistory.models import EventQuerySet
 
 from shared.models import (
     CVEDerivationClusterProposalStatusEvent,  # type: ignore
@@ -165,7 +166,7 @@ class SuggestionActivityLog:
 
         return packages
 
-    def _annotate_username(self, query: Any) -> Any:
+    def _annotate_username(self, query: EventQuerySet) -> EventQuerySet:
         return query.annotate(
             username=Coalesce(
                 Case(
